@@ -4,8 +4,8 @@ import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
 import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
 import com.shuttlematch.domain.model.match.MatchSchedule;
+import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.session.SessionId;
-import com.shuttlematch.presentation.api.NotFoundException;
 import com.shuttlematch.presentation.api.request.GenerateMatchesRequest;
 import com.shuttlematch.presentation.api.response.MatchScheduleResponse;
 
@@ -51,7 +51,7 @@ public class MatchController {
     public MatchScheduleResponse get(@PathVariable UUID sessionId) {
         return getMatchScheduleUseCase.execute(SessionId.of(sessionId))
                 .map(MatchScheduleResponse::from)
-                .orElseThrow(() -> new NotFoundException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "セッション " + sessionId + " の試合スケジュールはまだ生成されていません"));
     }
 

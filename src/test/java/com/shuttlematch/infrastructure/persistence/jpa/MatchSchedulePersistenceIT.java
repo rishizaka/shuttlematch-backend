@@ -7,7 +7,7 @@ import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
-import com.shuttlematch.domain.repository.SessionParticipantRepository;
+import com.shuttlematch.domain.repository.SessionRepository;
 import com.shuttlematch.domain.service.MatchingDomainService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -49,7 +49,7 @@ class MatchSchedulePersistenceIT {
     private MatchScheduleRepository matchScheduleRepository;
 
     @Autowired
-    private SessionParticipantRepository participantRepository;
+    private SessionRepository sessionRepository;
 
     /** users → circles → sessions → session_participants を投入し、参加者 ID を返す。 */
     private List<ParticipantId> seedSessionWithParticipants(SessionId sessionId, int participantCount) {
@@ -93,13 +93,14 @@ class MatchSchedulePersistenceIT {
     }
 
     @Test
-    @DisplayName("参加者 ID をセッション単位で取得できる")
-    void findsParticipantIdsBySession() {
+    @DisplayName("セッションを参加者ごと復元できる")
+    void loadsSessionWithParticipants() {
         SessionId sessionId = SessionId.newId();
         List<ParticipantId> seeded = seedSessionWithParticipants(sessionId, 6);
         em.flush();
+        em.clear();
 
-        List<ParticipantId> found = participantRepository.findParticipantIds(sessionId);
+        List<ParticipantId> found = sessionRepository.findById(sessionId).orElseThrow().participantIds();
 
         assertThat(found).containsExactlyInAnyOrderElementsOf(seeded);
     }

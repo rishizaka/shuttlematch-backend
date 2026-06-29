@@ -1,12 +1,12 @@
 package com.shuttlematch.application.usecase.session;
 
+import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.match.MatchSchedule;
-import com.shuttlematch.domain.model.session.ParticipantId;
+import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
-import com.shuttlematch.domain.repository.SessionParticipantRepository;
+import com.shuttlematch.domain.repository.SessionRepository;
 import com.shuttlematch.domain.service.MatchingDomainService;
 
-import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,31 +17,39 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GenerateMatchesUseCase {
 
-    private final SessionParticipantRepository participantRepository;
+    private final SessionRepository sessionRepository;
     private final MatchScheduleRepository matchScheduleRepository;
     private final MatchingDomainService matchingDomainService;
 
     public GenerateMatchesUseCase(
-            SessionParticipantRepository participantRepository,
+            SessionRepository sessionRepository,
             MatchScheduleRepository matchScheduleRepository,
             MatchingDomainService matchingDomainService) {
-        this.participantRepository = participantRepository;
+        this.sessionRepository = sessionRepository;
         this.matchScheduleRepository = matchScheduleRepository;
         this.matchingDomainService = matchingDomainService;
     }
 
     @Transactional
     public MatchSchedule execute(GenerateMatchesCommand command) {
-        // TODO: Session 集約の実装後、セッションの存在チェックと
-        //       ステータス(OPEN 等)の検証をここに追加する。
-        List<ParticipantId> participants =
-                participantRepository.findParticipantIds(command.sessionId());
+        Session session = sessionRepository.findById(command.sessionId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "セッションが見つかりません: " + command.sessionId().value()));
+
+        if (!session.status().allowsMatchGeneration()) {
+            throw new IllegalStateException(
+                    "このセッションは試合を生成できる状態ではありません: " + session.status());
+        }
 
         MatchSchedule schedule = matchingDomainService.generate(
-                command.sessionId(), participants, command.matchCount());
+                session.id(), session.participantIds(), command.matchCount());
 
         // 再生成に対応するため既存スケジュールを削除してから保存する
-        matchScheduleRepository.deleteBySessionId(command.sessionId());
-        return matchScheduleRepository.save(schedule);
+        matchScheduleRepository.deleteBySessionId(session.id());
+        MatchSchedule saved = matchScheduleRepository.save(schedule);
+
+        session.markGenerated();
+        sessionRepository.save(session);
+        return saved;
     }
 }

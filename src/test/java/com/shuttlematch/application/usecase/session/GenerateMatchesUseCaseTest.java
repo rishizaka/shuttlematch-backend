@@ -3,64 +3,72 @@ package com.shuttlematch.application.usecase.session;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.match.MatchSchedule;
-import com.shuttlematch.domain.model.session.ParticipantId;
+import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.session.SessionStatus;
+import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
-import com.shuttlematch.domain.repository.SessionParticipantRepository;
+import com.shuttlematch.domain.repository.SessionRepository;
 import com.shuttlematch.domain.service.MatchingDomainService;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
-import java.util.stream.IntStream;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class GenerateMatchesUseCaseTest {
 
-    private FakeSessionParticipantRepository participantRepository;
+    private FakeSessionRepository sessionRepository;
     private FakeMatchScheduleRepository matchScheduleRepository;
     private GenerateMatchesUseCase useCase;
-    private final SessionId sessionId = SessionId.newId();
 
     @BeforeEach
     void setUp() {
-        participantRepository = new FakeSessionParticipantRepository();
+        sessionRepository = new FakeSessionRepository();
         matchScheduleRepository = new FakeMatchScheduleRepository();
-        // シード固定で決定的にする
         useCase = new GenerateMatchesUseCase(
-                participantRepository,
+                sessionRepository,
                 matchScheduleRepository,
                 new MatchingDomainService(new Random(100L)));
     }
 
-    private List<ParticipantId> participants(int count) {
-        return IntStream.range(0, count).mapToObj(i -> ParticipantId.newId()).toList();
+    private Session openSessionWithGuests(int count) {
+        Session session = Session.create(
+                CircleId.of(UUID.randomUUID()), "テスト", OffsetDateTime.now(),
+                null, null, UserId.of(UUID.randomUUID()));
+        for (int i = 0; i < count; i++) {
+            session.addGuest("ゲスト" + i);
+        }
+        sessionRepository.save(session);
+        return session;
     }
 
     @Test
-    @DisplayName("参加者を読み込み、生成したスケジュールを保存して返す")
+    @DisplayName("セッションの参加者から生成し、保存して返す。セッションは生成済みになる")
     void generatesAndPersistsSchedule() {
-        participantRepository.setParticipants(sessionId, participants(8));
+        Session session = openSessionWithGuests(8);
 
-        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(sessionId));
+        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(session.id()));
 
         assertThat(result.size()).isEqualTo(15);
-        assertThat(result.sessionId()).isEqualTo(sessionId);
-        // 永続化されたものと一致する
-        assertThat(matchScheduleRepository.findBySessionId(sessionId)).contains(result);
+        assertThat(matchScheduleRepository.findBySessionId(session.id())).contains(result);
+        assertThat(sessionRepository.findById(session.id()).orElseThrow().status())
+                .isEqualTo(SessionStatus.GENERATED);
     }
 
     @Test
     @DisplayName("試合数を指定して生成できる")
     void generatesWithCustomMatchCount() {
-        participantRepository.setParticipants(sessionId, participants(6));
+        Session session = openSessionWithGuests(6);
 
-        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(sessionId, 5));
+        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(session.id(), 5));
 
         assertThat(result.size()).isEqualTo(5);
     }
@@ -68,38 +76,58 @@ class GenerateMatchesUseCaseTest {
     @Test
     @DisplayName("再生成時は既存スケジュールを削除してから保存する")
     void regenerationDeletesExistingSchedule() {
-        participantRepository.setParticipants(sessionId, participants(8));
+        Session session = openSessionWithGuests(8);
 
-        useCase.execute(new GenerateMatchesCommand(sessionId));
-        useCase.execute(new GenerateMatchesCommand(sessionId));
+        useCase.execute(new GenerateMatchesCommand(session.id()));
+        useCase.execute(new GenerateMatchesCommand(session.id()));
 
-        // 削除が呼ばれ、最終的に1件だけ残る
         assertThat(matchScheduleRepository.deleteCount).isEqualTo(2);
-        assertThat(matchScheduleRepository.count(sessionId)).isEqualTo(1);
+        assertThat(matchScheduleRepository.count(session.id())).isEqualTo(1);
     }
 
     @Test
     @DisplayName("参加者が4人未満なら例外を投げ、保存しない")
     void doesNotPersistWhenTooFewParticipants() {
-        participantRepository.setParticipants(sessionId, participants(3));
+        Session session = openSessionWithGuests(3);
 
-        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(sessionId)))
+        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(session.id())))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(matchScheduleRepository.findBySessionId(sessionId)).isEmpty();
+        assertThat(matchScheduleRepository.findBySessionId(session.id())).isEmpty();
     }
 
-    // --- 以下、テスト用のインメモリ実装 ---
+    @Test
+    @DisplayName("セッションが存在しなければ ResourceNotFoundException")
+    void throwsWhenSessionNotFound() {
+        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(SessionId.newId())))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 
-    private static final class FakeSessionParticipantRepository implements SessionParticipantRepository {
-        private final Map<SessionId, List<ParticipantId>> store = new HashMap<>();
+    @Test
+    @DisplayName("終了済みセッションでは生成できない(IllegalStateException)")
+    void throwsWhenSessionClosed() {
+        Session closed = Session.reconstitute(
+                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
+                null, null, SessionStatus.CLOSED, UserId.of(UUID.randomUUID()), List.of());
+        sessionRepository.save(closed);
 
-        void setParticipants(SessionId sessionId, List<ParticipantId> participants) {
-            store.put(sessionId, participants);
+        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(closed.id())))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    // --- インメモリ実装 ---
+
+    private static final class FakeSessionRepository implements SessionRepository {
+        private final java.util.Map<SessionId, Session> store = new java.util.HashMap<>();
+
+        @Override
+        public Session save(Session session) {
+            store.put(session.id(), session);
+            return session;
         }
 
         @Override
-        public List<ParticipantId> findParticipantIds(SessionId sessionId) {
-            return store.getOrDefault(sessionId, List.of());
+        public Optional<Session> findById(SessionId sessionId) {
+            return Optional.ofNullable(store.get(sessionId));
         }
     }
 
@@ -117,7 +145,7 @@ class GenerateMatchesUseCaseTest {
         public Optional<MatchSchedule> findBySessionId(SessionId sessionId) {
             return store.stream()
                     .filter(s -> s.sessionId().equals(sessionId))
-                    .reduce((first, second) -> second); // 最後に保存されたものを返す
+                    .reduce((first, second) -> second);
         }
 
         @Override

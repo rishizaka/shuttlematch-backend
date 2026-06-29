@@ -1,5 +1,8 @@
 package com.shuttlematch.presentation.api;
 
+import com.shuttlematch.application.ResourceNotFoundException;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,9 +18,13 @@ public class GlobalExceptionHandler {
     /** ドメインの不変条件違反(参加者不足・不正な試合数など)→ 400。 */
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
-        problem.setTitle("不正なリクエスト");
-        return problem;
+        return problem(HttpStatus.BAD_REQUEST, "不正なリクエスト", ex.getMessage());
+    }
+
+    /** 状態として許可されない操作(参加変更不可・生成不可など)→ 409。 */
+    @ExceptionHandler(IllegalStateException.class)
+    public ProblemDetail handleIllegalState(IllegalStateException ex) {
+        return problem(HttpStatus.CONFLICT, "操作が許可されない状態です", ex.getMessage());
     }
 
     /** リクエストボディのバリデーション違反 → 400。 */
@@ -27,16 +34,25 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("バリデーションエラー");
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
-        problem.setTitle("入力値が不正です");
-        return problem;
+        return problem(HttpStatus.BAD_REQUEST, "入力値が不正です", detail);
+    }
+
+    /** 外部キー制約違反など(存在しないサークル/ユーザー指定)→ 400。 */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        return problem(HttpStatus.BAD_REQUEST, "データ整合性エラー",
+                "参照先のデータが存在しないか、制約に違反しています");
     }
 
     /** リソース未存在 → 404。 */
-    @ExceptionHandler(NotFoundException.class)
-    public ProblemDetail handleNotFound(NotFoundException ex) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
-        problem.setTitle("リソースが見つかりません");
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
+        return problem(HttpStatus.NOT_FOUND, "リソースが見つかりません", ex.getMessage());
+    }
+
+    private ProblemDetail problem(HttpStatus status, String title, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(title);
         return problem;
     }
 }
