@@ -1,0 +1,15 @@
+package com.shuttlematch.application.usecase.session;
+
+import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.service.MatchingDomainService;
+
+/**
+ * 試合生成ユースケースの入力。
+ */
+public record GenerateMatchesCommand(SessionId sessionId, int matchCount) {
+
+    /** 試合数を省略した場合はデフォルト(15試合)を使う。 */
+    public GenerateMatchesCommand(SessionId sessionId) {
+        this(sessionId, MatchingDomainService.DEFAULT_MATCH_COUNT);
+    }
+}
