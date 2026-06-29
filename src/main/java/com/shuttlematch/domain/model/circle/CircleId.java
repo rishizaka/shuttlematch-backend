@@ -15,4 +15,8 @@ public record CircleId(UUID value) {
     public static CircleId of(UUID value) {
         return new CircleId(value);
     }
+
+    public static CircleId newId() {
+        return new CircleId(UUID.randomUUID());
+    }
 }

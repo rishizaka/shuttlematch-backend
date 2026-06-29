@@ -15,4 +15,8 @@ public record UserId(UUID value) {
     public static UserId of(UUID value) {
         return new UserId(value);
     }
+
+    public static UserId newId() {
+        return new UserId(UUID.randomUUID());
+    }
 }
