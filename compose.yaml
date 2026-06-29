@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shuttlematch-postgres
+    environment:
+      POSTGRES_DB: shuttlematch
+      POSTGRES_USER: shuttlematch
+      POSTGRES_PASSWORD: shuttlematch
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shuttlematch -d shuttlematch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
