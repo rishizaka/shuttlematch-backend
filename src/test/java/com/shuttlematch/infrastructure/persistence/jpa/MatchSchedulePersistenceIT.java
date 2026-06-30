@@ -113,7 +113,7 @@ class MatchSchedulePersistenceIT {
         em.flush();
 
         MatchSchedule generated = new MatchingDomainService(new Random(1L))
-                .generate(sessionId, participants, 10);
+                .generate(sessionId, participants, 1, 10);
 
         matchScheduleRepository.save(generated);
         em.flush();
@@ -125,6 +125,32 @@ class MatchSchedulePersistenceIT {
     }
 
     @Test
+    @DisplayName("セット開始で started_at が記録される")
+    void startMatchRecordsStartedAt() {
+        SessionId sessionId = SessionId.newId();
+        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 6);
+        em.flush();
+
+        matchScheduleRepository.save(
+                new MatchingDomainService(new Random(3L)).generate(sessionId, participants, 1, 5));
+        em.flush();
+        em.clear();
+
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        matchScheduleRepository.startMatch(sessionId, 2, now);
+        em.flush();
+        em.clear();
+
+        MatchSchedule restored = matchScheduleRepository.findBySessionId(sessionId).orElseThrow();
+        var match2 = restored.matches().stream()
+                .filter(m -> m.matchNumber().value() == 2).findFirst().orElseThrow();
+        var match1 = restored.matches().stream()
+                .filter(m -> m.matchNumber().value() == 1).findFirst().orElseThrow();
+        assertThat(match2.isStarted()).isTrue();
+        assertThat(match1.isStarted()).isFalse();
+    }
+
+    @Test
     @DisplayName("既存スケジュールを削除でき、再生成しても1件だけ残る")
     void deletesAndRegeneratesSchedule() {
         SessionId sessionId = SessionId.newId();
@@ -132,14 +158,14 @@ class MatchSchedulePersistenceIT {
         em.flush();
 
         MatchingDomainService service = new MatchingDomainService(new Random(2L));
-        matchScheduleRepository.save(service.generate(sessionId, participants, 15));
+        matchScheduleRepository.save(service.generate(sessionId, participants, 1, 15));
         em.flush();
 
         matchScheduleRepository.deleteBySessionId(sessionId);
         em.flush();
         assertThat(matchScheduleRepository.findBySessionId(sessionId)).isEmpty();
 
-        matchScheduleRepository.save(service.generate(sessionId, participants, 15));
+        matchScheduleRepository.save(service.generate(sessionId, participants, 1, 15));
         em.flush();
         em.clear();
 

@@ -3,6 +3,7 @@ package com.shuttlematch.domain.repository;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.SessionId;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 
 /**
@@ -17,4 +18,10 @@ public interface MatchScheduleRepository {
 
     /** 再生成のため既存スケジュールを削除する。 */
     void deleteBySessionId(SessionId sessionId);
+
+    /**
+     * 指定試合のセット開始時刻を記録し、更新後のスケジュールを返す。
+     * スケジュールや該当試合番号が無ければ空を返す。
+     */
+    Optional<MatchSchedule> startMatch(SessionId sessionId, int matchNumber, OffsetDateTime startedAt);
 }

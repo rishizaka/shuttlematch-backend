@@ -33,13 +33,14 @@ class CircleUserUseCaseTest {
     void setUp() {
         userRepository = new FakeUserRepository();
         circleRepository = new FakeCircleRepository();
-        createUserUseCase = new CreateUserUseCase(userRepository);
+        createUserUseCase = new CreateUserUseCase(
+                userRepository, new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder());
         createCircleUseCase = new CreateCircleUseCase(circleRepository, userRepository);
         addMemberUseCase = new AddMemberUseCase(circleRepository, userRepository);
     }
 
     private User createUser(String email) {
-        return createUserUseCase.execute(new CreateUserCommand("名前", email));
+        return createUserUseCase.execute(new CreateUserCommand("名前", email, "password123"));
     }
 
     @Test
@@ -112,6 +113,11 @@ class CircleUserUseCaseTest {
         @Override
         public Optional<User> findById(UserId userId) {
             return Optional.ofNullable(store.get(userId));
+        }
+
+        @Override
+        public Optional<User> findByEmail(String email) {
+            return store.values().stream().filter(u -> u.email().equals(email)).findFirst();
         }
 
         @Override

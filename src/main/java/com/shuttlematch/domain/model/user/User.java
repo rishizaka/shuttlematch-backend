@@ -12,22 +12,26 @@ public class User {
     private String cognitoSub;
     private String name;
     private String email;
+    /** パスワードの BCrypt ハッシュ。null は未設定(デフォルトパスワード扱い)。 */
+    private String passwordHash;
 
-    private User(UserId id, String cognitoSub, String name, String email) {
+    private User(UserId id, String cognitoSub, String name, String email, String passwordHash) {
         this.id = id;
         this.cognitoSub = cognitoSub;
         this.name = name;
         this.email = email;
+        this.passwordHash = passwordHash;
     }
 
-    public static User create(String name, String email) {
+    public static User create(String name, String email, String passwordHash) {
         validateName(name);
         validateEmail(email);
-        return new User(UserId.newId(), null, name, email);
+        return new User(UserId.newId(), null, name, email, passwordHash);
     }
 
-    public static User reconstitute(UserId id, String cognitoSub, String name, String email) {
-        return new User(id, cognitoSub, name, email);
+    public static User reconstitute(
+            UserId id, String cognitoSub, String name, String email, String passwordHash) {
+        return new User(id, cognitoSub, name, email, passwordHash);
     }
 
     private static void validateName(String name) {
@@ -56,6 +60,14 @@ public class User {
 
     public String email() {
         return email;
+    }
+
+    public String passwordHash() {
+        return passwordHash;
+    }
+
+    public boolean hasPassword() {
+        return passwordHash != null;
     }
 
     @Override

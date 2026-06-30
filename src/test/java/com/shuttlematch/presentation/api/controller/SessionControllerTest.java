@@ -36,6 +36,9 @@ class SessionControllerTest {
     private GetSessionUseCase getSessionUseCase;
 
     @MockitoBean
+    private com.shuttlematch.application.usecase.session.ListSessionsUseCase listSessionsUseCase;
+
+    @MockitoBean
     private com.shuttlematch.application.usecase.session.AddParticipantUseCase addParticipantUseCase;
 
     @MockitoBean

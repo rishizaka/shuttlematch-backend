@@ -8,6 +8,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,6 +36,9 @@ public class MatchEntity {
     @Column(name = "match_number", nullable = false)
     private int matchNumber;
 
+    @Column(name = "set_number", nullable = false)
+    private int setNumber;
+
     @Column(name = "pair_a_player1_id", nullable = false)
     private UUID pairAPlayer1Id;
 
@@ -49,4 +53,7 @@ public class MatchEntity {
 
     @Column(name = "court_number")
     private Integer courtNumber;
+
+    @Column(name = "started_at")
+    private OffsetDateTime startedAt;
 }

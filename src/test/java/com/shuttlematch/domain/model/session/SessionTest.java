@@ -95,7 +95,8 @@ class SessionTest {
     void closedCannotBeGenerated() {
         Session closed = Session.reconstitute(
                 SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, SessionStatus.CLOSED, UserId.of(UUID.randomUUID()), List.of());
+                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
+                UserId.of(UUID.randomUUID()), List.of());
         assertThatThrownBy(closed::markGenerated)
                 .isInstanceOf(IllegalStateException.class);
     }

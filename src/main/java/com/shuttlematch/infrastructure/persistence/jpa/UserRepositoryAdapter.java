@@ -27,6 +27,7 @@ public class UserRepositoryAdapter implements UserRepository {
         entity.setCognitoSub(user.cognitoSub());
         entity.setName(user.name());
         entity.setEmail(user.email());
+        entity.setPasswordHash(user.passwordHash());
         UserEntity saved = jpaRepository.save(entity);
         return toDomain(saved);
     }
@@ -34,6 +35,11 @@ public class UserRepositoryAdapter implements UserRepository {
     @Override
     public Optional<User> findById(UserId userId) {
         return jpaRepository.findById(userId.value()).map(this::toDomain);
+    }
+
+    @Override
+    public Optional<User> findByEmail(String email) {
+        return jpaRepository.findByEmail(email).map(this::toDomain);
     }
 
     @Override
@@ -46,6 +52,7 @@ public class UserRepositoryAdapter implements UserRepository {
                 UserId.of(entity.getId()),
                 entity.getCognitoSub(),
                 entity.getName(),
-                entity.getEmail());
+                entity.getEmail(),
+                entity.getPasswordHash());
     }
 }

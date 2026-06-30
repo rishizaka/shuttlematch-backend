@@ -46,11 +46,11 @@ class CircleUserControllerTest {
     @DisplayName("POST users: 201 でユーザーを返す")
     void createUser() throws Exception {
         when(createUserUseCase.execute(any(CreateUserCommand.class)))
-                .thenReturn(User.create("田中", "tanaka@example.com"));
+                .thenReturn(User.create("田中", "tanaka@example.com", "hash"));
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType("application/json")
-                        .content("{\"name\":\"田中\",\"email\":\"tanaka@example.com\"}"))
+                        .content("{\"name\":\"田中\",\"email\":\"tanaka@example.com\",\"password\":\"abcd1234\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value("tanaka@example.com"));
     }

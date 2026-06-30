@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShuttleMatch 構成ガイド — Java学習者向け</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2129;
+    --panel2: #222b35;
+    --border: #2d3742;
+    --text: #e6edf3;
+    --muted: #9aa7b4;
+    --accent: #4cc2ff;
+    --accent2: #7ee787;
+    --warn: #ffb454;
+    --pink: #ff7b9c;
+    --mono: "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px 80px; }
+  header {
+    background: linear-gradient(135deg, #16324f, #1a2129);
+    padding: 60px 20px 50px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 2.4em; margin: 0 0 10px; }
+  header .tag { color: var(--accent); font-family: var(--mono); font-size: .9em; }
+  header p { color: var(--muted); max-width: 640px; margin: 16px auto 0; }
+  h2 {
+    font-size: 1.5em; margin: 56px 0 18px; padding-bottom: 10px;
+    border-bottom: 2px solid var(--accent); display: inline-block;
+  }
+  h3 { font-size: 1.15em; margin: 32px 0 10px; color: var(--accent2); }
+  p { margin: 12px 0; }
+  code {
+    font-family: var(--mono); background: var(--panel2); color: var(--warn);
+    padding: 2px 6px; border-radius: 4px; font-size: .88em;
+  }
+  pre {
+    background: #0b0f14; border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 18px; overflow-x: auto; font-family: var(--mono);
+    font-size: .85em; line-height: 1.65; color: #cdd9e5;
+  }
+  pre .c { color: #6a7886; }
+  pre .k { color: var(--pink); }
+  pre .s { color: var(--accent2); }
+  pre .t { color: var(--accent); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 24px; margin: 18px 0;
+  }
+  .note {
+    background: rgba(76,194,255,.08); border-left: 3px solid var(--accent);
+    padding: 12px 18px; margin: 18px 0; border-radius: 0 8px 8px 0;
+  }
+  .note.tip { background: rgba(126,231,135,.08); border-color: var(--accent2); }
+  .note.warn { background: rgba(255,180,84,.08); border-color: var(--warn); }
+  .note b { color: var(--text); }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: .92em; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--accent); font-weight: 600; }
+  td code { font-size: .85em; }
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: .72em; font-weight: 700;
+    padding: 2px 8px; border-radius: 4px; margin-right: 8px; min-width: 52px; text-align: center;
+  }
+  .get { background: #1f6feb33; color: var(--accent); }
+  .post { background: #2ea04333; color: var(--accent2); }
+  .del { background: #f8514933; color: var(--pink); }
+  .layers { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .layer {
+    border: 1px solid var(--border); padding: 16px 20px; position: relative;
+  }
+  .layer:first-child { border-radius: 10px 10px 0 0; }
+  .layer:last-child { border-radius: 0 0 10px 10px; }
+  .layer + .layer { border-top: none; }
+  .layer .lname { font-weight: 700; font-size: 1.05em; }
+  .layer .lname small { font-family: var(--mono); color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .layer p { margin: 6px 0 0; color: var(--muted); font-size: .92em; }
+  .l1 { background: rgba(255,123,156,.07); }
+  .l2 { background: rgba(255,180,84,.07); }
+  .l3 { background: rgba(126,231,135,.07); }
+  .l4 { background: rgba(76,194,255,.07); }
+  .arrow { text-align: center; color: var(--muted); font-size: 1.2em; padding: 2px; }
+  .toc { columns: 2; gap: 30px; }
+  .toc a { color: var(--accent); text-decoration: none; display: block; padding: 4px 0; }
+  .toc a:hover { text-decoration: underline; }
+  .glossary dt { color: var(--accent2); font-weight: 700; margin-top: 14px; font-family: var(--mono); }
+  .glossary dd { margin: 4px 0 0; color: var(--muted); }
+  .flow { font-family: var(--mono); font-size: .82em; line-height: 1.4; }
+  .flow .box { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin: 4px; background: var(--panel2); }
+  footer { text-align: center; color: var(--muted); font-size: .85em; margin-top: 60px; }
+  .kv { color: var(--muted); }
+  .kv b { color: var(--text); }
+  a.anchor { color: inherit; text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="tag">🏸 Spring Boot 4 / Java 21 / DDD</div>
+  <h1>ShuttleMatch 構成ガイド</h1>
+  <p>バドミントンサークル管理アプリのバックエンド。このページは「Javaは初めて」というあなたが、
+  このリポジトリの<b>全体像と、なぜこういう作りになっているか</b>を理解するための解説書です。</p>
+</header>
+
+<div class="wrap">
+
+<h2>目次</h2>
+<div class="card toc">
+  <a href="#what">1. このアプリは何をするのか</a>
+  <a href="#stack">2. 技術スタックの読み方</a>
+  <a href="#java">3. Java の基礎用語(最低限)</a>
+  <a href="#spring">4. Spring Boot とは何者か</a>
+  <a href="#ddd">5. DDD の4層アーキテクチャ</a>
+  <a href="#tree">6. ディレクトリ構成を歩く</a>
+  <a href="#flow">7. 1リクエストが流れる様子</a>
+  <a href="#domain">8. ドメインモデルの中身</a>
+  <a href="#match">9. マッチングのアルゴリズム</a>
+  <a href="#api">10. REST API 一覧</a>
+  <a href="#run">11. 動かしてみる</a>
+  <a href="#glossary">12. 用語集</a>
+</div>
+
+<h2 id="what"><a class="anchor" href="#what">1. このアプリは何をするのか</a></h2>
+<p>バドミントンサークルの運営を支える<b>バックエンド(サーバー側)</b>です。画面(フロントエンド)は別物で、
+ここにあるのは「データを保存し、ルールに従って計算し、JSON で返す」役割のプログラムです。主な機能は2つ:</p>
+<div class="card">
+  <p>① <b>出欠管理</b> — 誰がいつの活動日(セッション)に参加するかを登録・管理する。</p>
+  <p>② <b>ダブルスのランダムマッチング</b> — 参加者から「15試合ぶんのペア組み」を、出場回数が公平になるよう自動生成する。</p>
+</div>
+<div class="note">
+  <b>バックエンドとは?</b> ブラウザやスマホアプリ(フロント)から「このセッションの試合を作って」と<b>リクエスト</b>が来ると、
+  計算してデータベースに保存し、結果を返す——その裏方のプログラムです。人が見る画面は持ちません。
+</div>
+
+<h2 id="stack"><a class="anchor" href="#stack">2. 技術スタックの読み方</a></h2>
+<table>
+  <tr><th>分類</th><th>使っているもの</th><th>初学者向けのひとこと</th></tr>
+  <tr><td>言語</td><td><code>Java 21</code></td><td>このプログラムを書いている言語。21は2023年の安定版。</td></tr>
+  <tr><td>フレームワーク</td><td><code>Spring Boot 4.1</code></td><td>Javaでサーバーを作るための定番の土台。詳しくは §4。</td></tr>
+  <tr><td>ビルドツール</td><td><code>Gradle</code> (Kotlin DSL)</td><td>依存ライブラリの取得とコンパイルを自動化する道具。<code>build.gradle.kts</code> が設定ファイル。</td></tr>
+  <tr><td>データベース</td><td><code>PostgreSQL</code></td><td>データを保存する場所(リレーショナルDB)。</td></tr>
+  <tr><td>マイグレーション</td><td><code>Flyway</code></td><td>DBの表(テーブル)の作り方を <code>V1__init.sql</code> のようなファイルで管理し、起動時に自動適用。</td></tr>
+  <tr><td>テスト</td><td><code>JUnit 5</code> + <code>Testcontainers</code></td><td>自動テスト。Testcontainersはテスト中に本物のDBをDockerで立ち上げる。</td></tr>
+  <tr><td>設計思想</td><td><code>DDD</code></td><td>ドメイン駆動設計。コードの並べ方のルール。詳しくは §5。</td></tr>
+  <tr><td>API仕様書</td><td><code>OpenAPI</code> / Swagger</td><td>APIの仕様を自動で文書化する仕組み。<code>build/openapi.yaml</code> に出力される。</td></tr>
+</table>
+<div class="note tip"><b>Gradle Wrapper (<code>./gradlew</code>)</b> があるので、あなたのPCにGradle本体を入れる必要はありません。
+<code>./gradlew</code> を叩けば適切なバージョンが自動で使われます。</div>
+
+<h2 id="java"><a class="anchor" href="#java">3. Java の基礎用語(最低限)</a></h2>
+<p>コードを読む前に、最低限これだけ押さえると一気に読めるようになります。</p>
+<dl class="glossary">
+  <dt>class / クラス</dt><dd>データと処理をひとまとめにした「設計図」。Javaのプログラムはクラスの集まり。</dd>
+  <dt>package / パッケージ</dt><dd>クラスを入れるフォルダ。<code>com.shuttlematch.domain.model</code> のようにドット区切りで、実際のフォルダ階層と一致する。</dd>
+  <dt>record / レコード</dt><dd>「値を持つだけの不変クラス」を1行で書ける機能(Java 14+)。<code>UserId</code> や <code>Pair</code> がこれ。一度作ったら中身を変えない=安全。</dd>
+  <dt>interface / インターフェース</dt><dd>「こういうメソッドを持つ」という約束だけを定義したもの。中身(実装)は別のクラスが書く。DDDで多用される(§5)。</dd>
+  <dt>annotation / アノテーション</dt><dd><code>@RestController</code> のような <code>@</code> 付きの目印。Springに「これはコントローラだよ」と教える。</dd>
+  <dt>メソッド</dt><dd>クラスが持つ「処理」。関数のこと。<code>generate(...)</code> など。</dd>
+</dl>
+<div class="note">このリポジトリでは <code>record</code> が「値オブジェクト」(後述)に、ふつうの <code>class</code> が「エンティティ」に、
+<code>interface</code> が「リポジトリの約束」に、それぞれ使い分けられています。この対応が分かると設計が読めます。</div>
+
+<h2 id="spring"><a class="anchor" href="#spring">4. Spring Boot とは何者か</a></h2>
+<p>Javaで「Webサーバー」を一から作るのは大変です。<b>Spring Boot はその面倒をほぼ全部肩代わりしてくれる土台</b>です。
+このアプリの入口はたった14行:</p>
+<pre><span class="k">@SpringBootApplication</span>
+<span class="k">public class</span> <span class="t">ShuttlematchApplication</span> {
+    <span class="k">public static void</span> main(String[] args) {
+        SpringApplication.run(ShuttlematchApplication.<span class="k">class</span>, args);
+    }
+}</pre>
+<p>この <code>main</code> を実行すると、Spring Bootが裏で:</p>
+<ul>
+  <li>Webサーバー(Tomcat)を起動して <b>8080番ポート</b>で待ち受ける</li>
+  <li><code>@RestController</code> の付いたクラスを自動で見つけてURLと結びつける</li>
+  <li>DBに接続し、Flywayでテーブルを用意する</li>
+</ul>
+<div class="note tip"><b>DI(依存性の注入)</b> ——
+Springの最重要概念。「このクラスが動くには別のクラスが必要」という関係を、Springが自動で組み立ててくれます。
+例えば <code>SessionController</code> のコンストラクタは <code>CreateSessionUseCase</code> を引数で受け取りますが、
+あなたが <code>new</code> で作る必要はありません。Springが用意して「注入」します。これがコードを疎結合に保つ鍵です。</div>
+
+<h2 id="ddd"><a class="anchor" href="#ddd">5. DDD の4層アーキテクチャ</a></h2>
+<p>このプロジェクトの最大の特徴は <b>DDD(ドメイン駆動設計)</b>で4つの層に分けていること。
+「ビジネスのルール(=ドメイン)」を中心に置き、技術的な都合(DBやWeb)を外側に追いやる考え方です。
+上から下へ依存が流れます:</p>
+<div class="layers">
+  <div class="layer l4">
+    <div class="lname">presentation 層 <small>presentation/api</small></div>
+    <p>外との窓口。HTTPリクエストを受け、JSONを返す。Controller / Request / Response。</p>
+  </div>
+  <div class="arrow">▼ 呼ぶ</div>
+  <div class="layer l3">
+    <div class="lname">application 層 <small>application/usecase</small></div>
+    <p>ユースケース(操作の段取り)。「セッションを作る」「試合を生成する」といった処理の流れを組み立てる。</p>
+  </div>
+  <div class="arrow">▼ 使う</div>
+  <div class="layer l2">
+    <div class="lname">domain 層 <small>domain/model · service · repository</small></div>
+    <p><b>心臓部</b>。ビジネスルールそのもの。Spring にも DB にも依存しない、純粋なJava。ここが一番大事。</p>
+  </div>
+  <div class="arrow">▲ 実装を提供(interfaceを実装)</div>
+  <div class="layer l1">
+    <div class="lname">infrastructure 層 <small>infrastructure/persistence · config</small></div>
+    <p>技術的な詳細。JPAでDBに保存する具体的な処理、設定など。domain層が定義した「約束(interface)」を実装する。</p>
+  </div>
+</div>
+<div class="note warn"><b>依存の向きがミソ:</b> domain層は他のどの層も知りません(Springすら import しない)。
+逆に外側の層が domain を頼ります。こうすると「DBをPostgreSQLからMySQLに変えても、ルールのコードは1行も変えなくていい」という強さが生まれます。
+これが<b>なぜわざわざ層を分けるのか</b>の答えです。</div>
+
+<h2 id="tree"><a class="anchor" href="#tree">6. ディレクトリ構成を歩く</a></h2>
+<pre>src/main/java/com/shuttlematch/
+├── <span class="t">ShuttlematchApplication.java</span>   <span class="c"># 起動の入口(§4)</span>
+│
+├── <span class="t">domain/</span>                  <span class="c"># 🟡 ドメイン層 = ルールの心臓部</span>
+│   ├── model/                <span class="c">#   集約・エンティティ・値オブジェクト</span>
+│   │   ├── user/             <span class="c">#     User, UserId</span>
+│   │   ├── circle/           <span class="c">#     Circle, Member, InviteCode...</span>
+│   │   ├── session/          <span class="c">#     Session(集約ルート), Participant</span>
+│   │   └── match/            <span class="c">#     Match, Pair, MatchSchedule</span>
+│   ├── service/              <span class="c">#   MatchingDomainService(マッチング計算)</span>
+│   └── repository/           <span class="c">#   保存の「約束」= interface のみ</span>
+│
+├── <span class="t">application/</span>             <span class="c"># 🟢 アプリケーション層 = 段取り</span>
+│   ├── usecase/              <span class="c">#   CreateSessionUseCase 等</span>
+│   └── dto/                  <span class="c">#   層をまたぐデータの入れ物</span>
+│
+├── <span class="t">infrastructure/</span>          <span class="c"># 🔴 インフラ層 = 技術的詳細</span>
+│   ├── persistence/jpa/      <span class="c">#   Entity と RepositoryAdapter(DB保存の実装)</span>
+│   └── config/               <span class="c">#   CORS, OpenAPI, DI設定</span>
+│
+└── <span class="t">presentation/</span>            <span class="c"># 🔵 プレゼンテーション層 = 窓口</span>
+    └── api/
+        ├── controller/       <span class="c">#   URLと処理の対応づけ</span>
+        ├── request/          <span class="c">#   受け取るJSONの形</span>
+        └── response/         <span class="c">#   返すJSONの形</span>
+
+src/main/resources/
+├── application.yml           <span class="c"># 設定(DB接続先など)</span>
+└── db/migration/V1__init.sql <span class="c"># Flyway: テーブル定義</span></pre>
+<div class="note"><b><code>package-info.java</code> が各フォルダにある</b>のに気づくでしょう。
+これはパッケージ自体に説明コメントを付けるためのJavaの慣習ファイルです。中身を読むと各層の役割が日本語で書かれています。</div>
+
+<h2 id="flow"><a class="anchor" href="#flow">7. 1リクエストが流れる様子</a></h2>
+<p>「セッションを作る」リクエストを例に、4層をデータがどう通り抜けるか追ってみましょう。</p>
+<div class="card flow">
+  <span class="box">📱 クライアント<br>POST /api/v1/circles/{id}/sessions</span> →
+  <span class="box">🔵 SessionController<br>JSONを受け取る</span> →
+  <span class="box">🟢 CreateSessionUseCase<br>段取りを実行</span> →
+  <span class="box">🟡 Session.create()<br>ルール検証</span> →
+  <span class="box">🔴 RepositoryAdapter<br>DBへ保存</span> →
+  <span class="box">🔵 SessionResponse<br>JSONで返す</span>
+</div>
+<p>コントローラの実コードを見ると、この「受けて → ユースケースに渡して → レスポンスに変換」という薄さがよく分かります:</p>
+<pre><span class="k">@PostMapping</span>(<span class="s">"/api/v1/circles/{circleId}/sessions"</span>)
+<span class="k">@ResponseStatus</span>(HttpStatus.CREATED)
+<span class="k">public</span> SessionResponse create(
+        <span class="k">@PathVariable</span> UUID circleId,
+        <span class="k">@Valid @RequestBody</span> CreateSessionRequest request) {
+    CreateSessionCommand command = <span class="k">new</span> CreateSessionCommand(...);
+    Session session = createSessionUseCase.execute(command);  <span class="c">// 段取りは丸投げ</span>
+    <span class="k">return</span> SessionResponse.from(session);                     <span class="c">// ドメイン→JSON用に変換</span>
+}</pre>
+<table>
+  <tr><th>アノテーション</th><th>意味</th></tr>
+  <tr><td><code>@PostMapping</code></td><td>このURLにPOSTが来たらこのメソッドを呼ぶ</td></tr>
+  <tr><td><code>@PathVariable</code></td><td>URLの <code>{circleId}</code> 部分を引数として受け取る</td></tr>
+  <tr><td><code>@RequestBody</code></td><td>リクエストのJSON本文をJavaオブジェクトに変換</td></tr>
+  <tr><td><code>@Valid</code></td><td>受け取ったデータが妥当か(必須項目があるか等)を自動チェック</td></tr>
+  <tr><td><code>@ResponseStatus(CREATED)</code></td><td>成功時にHTTPステータス201を返す</td></tr>
+</table>
+
+<h2 id="domain"><a class="anchor" href="#domain">8. ドメインモデルの中身</a></h2>
+<p>DDDでは登場人物を3種類に分けます。このリポジトリの実例で見ましょう。</p>
+
+<h3>① 値オブジェクト(Value Object)— <code>record</code></h3>
+<p>「値そのものに意味があり、変わらない」もの。IDや組み合わせなど。例: <code>UserId</code> は「ただのUUID」ではなく「ユーザーのID」という意味を型に持たせています。</p>
+<pre><span class="k">public record</span> <span class="t">UserId</span>(UUID value) {
+    <span class="k">public</span> UserId {
+        Objects.requireNonNull(value, <span class="s">"UserId は null にできません"</span>);
+    }
+}</pre>
+<div class="note tip"><b><code>Pair</code> が秀逸な例:</b> ダブルスのペアは「AとB」も「BとA」も同じはず。
+そこで生成時にUUIDを昇順に並べ替えて正規化しているので、<code>new Pair(a,b)</code> と <code>new Pair(b,a)</code> が <code>equals</code> になります。
+「同じペアかどうか」の判定をルールとして型に閉じ込めているわけです。</div>
+
+<h3>② エンティティ / 集約ルート(Aggregate Root)— <code>class</code></h3>
+<p>「IDで識別され、状態が変化する」もの。<code>Session</code> はその代表で、<b>集約ルート</b>(=関連するデータの取りまとめ役)です。
+参加者リストを抱え、参加登録のルールを自分で守ります:</p>
+<pre><span class="k">public</span> Participant addUser(UserId userId) {
+    ensureCanModifyParticipants();          <span class="c">// 受付中以外は拒否</span>
+    <span class="k">if</span> (already) <span class="k">throw new</span> IllegalArgumentException(<span class="s">"既に参加しています"</span>);
+    ensureCapacityAvailable();               <span class="c">// 定員チェック</span>
+    Participant participant = Participant.ofUser(userId);
+    participants.add(participant);
+    <span class="k">return</span> participant;
+}</pre>
+<div class="note"><b>なぜここにルールを書く?</b> 「定員オーバーは禁止」「重複参加は禁止」といったルールを
+Controllerやデータベースではなく <b>Sessionクラス自身</b> に持たせます。こうすると、どこから呼ばれても必ずルールが守られ、
+ルールの置き場所が散らばりません。これがDDDの「ドメインを中心に」の実践です。
+コンストラクタが <code>private</code> で、生成は <code>Session.create(...)</code> という名前付きメソッド経由なのも、
+「正しい状態でしか作れない」ようにする工夫です。</div>
+
+<h3>③ リポジトリ(Repository)— <code>interface</code></h3>
+<p>「集約をDBに保存・取得する」約束。domain層には<b>interface(約束)だけ</b>を置き、実際のDB処理(JPA)はinfrastructure層の <code>...RepositoryAdapter</code> が実装します。
+これが §5 の「依存の向き」を実現する仕掛けです。</p>
+<table>
+  <tr><th>domain(約束)</th><th>infrastructure(実装)</th></tr>
+  <tr><td><code>SessionRepository</code></td><td><code>SessionRepositoryAdapter</code></td></tr>
+  <tr><td><code>UserRepository</code></td><td><code>UserRepositoryAdapter</code></td></tr>
+  <tr><td><code>CircleRepository</code></td><td><code>CircleRepositoryAdapter</code></td></tr>
+  <tr><td><code>MatchScheduleRepository</code></td><td><code>MatchScheduleRepositoryAdapter</code></td></tr>
+</table>
+
+<h2 id="match"><a class="anchor" href="#match">9. マッチングのアルゴリズム</a></h2>
+<p>このアプリの目玉、<code>MatchingDomainService</code>。「15試合ぶんのダブルスの組み合わせを、なるべく公平に」生成します。
+ロジックの方針は3つ:</p>
+<div class="card">
+  <p>① <b>出場回数が少ない人を優先</b> — 毎試合、これまでの出場回数が少ない順に4人を選ぶ。結果として全員の出場回数が均等になり、奇数人数でも自然に「待ち番」が回る。</p>
+  <p>② <b>Fisher-Yates シャッフルでランダム化</b> — 同じ出場回数の人どうしの順番決めと、4人を2ペアに分ける部分をランダムに。</p>
+  <p>③ <b>同じカードの連続を回避</b> — 直前の試合と全く同じペア対戦になりそうなら、数回まで組み替えを試す(ベストエフォート)。</p>
+</div>
+<pre><span class="k">for</span> (<span class="k">int</span> number = 1; number &lt;= matchCount; number++) {
+    List&lt;ParticipantId&gt; four = pickLeastPlayed(pool, playCount);  <span class="c">// ①出場少ない順</span>
+    Match match = buildMatch(number, four, previousCard);          <span class="c">// ②③ペア分け</span>
+    matches.add(match);
+    previousCard = match.pairs();
+    four.forEach(p -&gt; playCount.merge(p, 1, Integer::sum));        <span class="c">// 出場回数を+1</span>
+}</pre>
+<div class="note tip"><b>テストしやすい設計:</b> 乱数生成器をコンストラクタで外から渡せる(<code>new MatchingDomainService(random)</code>)ようになっています。
+テストでは「シードを固定した乱数」を渡せば毎回同じ結果になり、ランダムなのに検証可能。これも「外から依存を注入する」DIの考え方です。</div>
+<p>定数で挙動が決まっているのも読みやすいポイント: <code>MIN_PARTICIPANTS = 4</code>(最低4人)、<code>DEFAULT_MATCH_COUNT = 15</code>(標準15試合)。</p>
+
+<h2 id="api"><a class="anchor" href="#api">10. REST API 一覧</a></h2>
+<p>コントローラから読み取った現在のエンドポイントです。すべて <code>/api/v1</code> 始まり。</p>
+<table>
+  <tr><th>メソッド/パス</th><th>役割</th></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/users</code></td><td>ユーザー作成</td></tr>
+  <tr><td><span class="pill get">GET</span><code>/api/v1/users/{userId}</code></td><td>ユーザー取得</td></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/circles</code></td><td>サークル作成</td></tr>
+  <tr><td><span class="pill get">GET</span><code>/api/v1/circles/{circleId}</code></td><td>サークル取得</td></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/circles/{circleId}/members</code></td><td>サークルにメンバー追加</td></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/circles/{circleId}/sessions</code></td><td>セッション(活動日)作成</td></tr>
+  <tr><td><span class="pill get">GET</span><code>/api/v1/sessions/{sessionId}</code></td><td>セッション取得</td></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/sessions/{sessionId}/participants</code></td><td>参加者登録</td></tr>
+  <tr><td><span class="pill del">DEL</span><code>/api/v1/sessions/{sessionId}/participants/{participantId}</code></td><td>参加者削除</td></tr>
+  <tr><td><span class="pill post">POST</span><code>/api/v1/sessions/{sessionId}/matches/generate</code></td><td>試合を自動生成</td></tr>
+  <tr><td><span class="pill get">GET</span><code>/api/v1/sessions/{sessionId}/matches</code></td><td>生成済みの試合を取得</td></tr>
+</table>
+<div class="note tip">アプリ起動中に <code>http://localhost:8080/swagger-ui.html</code> を開くと、これらのAPIをブラウザから試せる画面(Swagger UI)が出ます。</div>
+
+<h2 id="run"><a class="anchor" href="#run">11. 動かしてみる</a></h2>
+<p>READMEに詳細がありますが、流れだけ:</p>
+<pre><span class="c"># 1. データベース(PostgreSQL)を起動 — Docker利用が手軽</span>
+docker compose up -d
+
+<span class="c"># 2. アプリを起動(JAVA_HOME に JDK21 を通してから)</span>
+./gradlew bootRun
+
+<span class="c"># 3. 起動確認</span>
+curl http://localhost:8080/actuator/health
+<span class="c"># → {"status":"UP"} なら成功</span>
+
+<span class="c"># テストの実行(Dockerが必要)</span>
+./gradlew test</pre>
+<div class="note warn"><b>つまずきポイント:</b> Homebrewの <code>openjdk@21</code> は「keg-only」で自動でパスが通りません。
+READMEの通り <code>~/.zshrc</code> に <code>JAVA_HOME</code> を設定する必要があります。
+また、テストは Testcontainers が本物のDBコンテナを立てるため <b>Docker起動が必須</b>です。</div>
+
+<h2 id="glossary"><a class="anchor" href="#glossary">12. 用語集</a></h2>
+<dl class="glossary">
+  <dt>JPA</dt><dd>Javaオブジェクトとデータベースの表を対応づける仕組み。<code>@Entity</code> の付いたクラス(<code>SessionEntity</code> 等)がDBの1行に対応する。</dd>
+  <dt>Entity (JPA) vs Entity (DDD)</dt><dd>紛らわしいが別物。<b>JPAのEntity</b>はDB保存用の入れ物(infrastructure層)。<b>DDDのEntity</b>はルールを持つドメインの主役(domain層の <code>Session</code> 等)。このリポジトリは両者を意図的に分けている。</dd>
+  <dt>DTO</dt><dd>Data Transfer Object。層をまたいでデータを運ぶためだけの入れ物。<code>Request</code>/<code>Response</code>/<code>Command</code> など。</dd>
+  <dt>UseCase</dt><dd>「1つの操作」の段取りを表すクラス。例: <code>CreateSessionUseCase.execute()</code>。コントローラを薄く、ドメインを純粋に保つ緩衝材。</dd>
+  <dt>CORS</dt><dd>別ドメインのフロントからこのAPIを呼べるようにする許可設定。<code>CorsConfig</code> にある。</dd>
+  <dt>Lombok</dt><dd><code>@Getter</code> 等のアノテーションで定型コードを自動生成するライブラリ。<code>build.gradle.kts</code> に登場。</dd>
+  <dt>Flyway migration</dt><dd><code>V1__init.sql</code> のような連番ファイルでDBスキーマを管理。アプリ起動時に未適用のものを順に実行する。</dd>
+  <dt>actuator</dt><dd>アプリの健康状態などを <code>/actuator/health</code> で公開するSpringの機能。</dd>
+</dl>
+
+<div class="card">
+  <h3 style="margin-top:0">まず読むと理解が早いファイル順</h3>
+  <ol>
+    <li><code>ShuttlematchApplication.java</code> — 起動の入口</li>
+    <li><code>domain/model/session/Session.java</code> — 集約ルートとルールの書き方</li>
+    <li><code>domain/model/user/UserId.java</code>, <code>match/Pair.java</code> — recordによる値オブジェクト</li>
+    <li><code>domain/service/MatchingDomainService.java</code> — 目玉のアルゴリズム</li>
+    <li><code>presentation/api/controller/SessionController.java</code> — 窓口の薄さ</li>
+    <li>各層の <code>package-info.java</code> — 設計者のコメント</li>
+  </ol>
+</div>
+
+<footer>
+  ShuttleMatch backend — 自動生成された学習者向け構成ガイド · このHTMLは単独で開けます(外部依存なし)
+</footer>
+</div>
+</body>
+</html>

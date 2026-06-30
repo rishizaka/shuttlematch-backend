@@ -9,7 +9,6 @@ import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.SessionId;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,34 +39,43 @@ class MatchingDomainServiceTest {
     void throwsWhenFewerThanFourParticipants() {
         MatchingDomainService service = serviceWithSeed(1L);
         assertThrows(IllegalArgumentException.class,
-                () -> service.generate(sessionId, participants(3)));
+                () -> service.generate(sessionId, participants(3), 1, 10));
     }
 
     @Test
     @DisplayName("ちょうど4人なら生成できる(最低人数の境界)")
     void generatesWithExactlyFourParticipants() {
-        MatchSchedule schedule = serviceWithSeed(1L).generate(sessionId, participants(4));
-        assertEquals(MatchingDomainService.DEFAULT_MATCH_COUNT, schedule.size());
+        MatchSchedule schedule = serviceWithSeed(1L)
+                .generate(sessionId, participants(4), 1, MatchingDomainService.DEFAULT_SET_COUNT);
+        assertEquals(MatchingDomainService.DEFAULT_SET_COUNT, schedule.size());
     }
 
     @Test
-    @DisplayName("デフォルトでは15試合を生成する")
-    void generatesFifteenMatchesByDefault() {
-        MatchSchedule schedule = serviceWithSeed(2L).generate(sessionId, participants(8));
-        assertEquals(15, schedule.size());
+    @DisplayName("デフォルト(10)セットでは1コートあたり10試合を生成する")
+    void generatesDefaultSetCount() {
+        MatchSchedule schedule = serviceWithSeed(2L)
+                .generate(sessionId, participants(8), 1, MatchingDomainService.DEFAULT_SET_COUNT);
+        assertEquals(10, schedule.size());
     }
 
     @Test
-    @DisplayName("試合数を指定できる")
-    void generatesRequestedNumberOfMatches() {
-        MatchSchedule schedule = serviceWithSeed(2L).generate(sessionId, participants(8), 7);
+    @DisplayName("セット数を指定できる")
+    void generatesRequestedNumberOfSets() {
+        MatchSchedule schedule = serviceWithSeed(2L).generate(sessionId, participants(8), 1, 7);
         assertEquals(7, schedule.size());
+    }
+
+    @Test
+    @DisplayName("コート数とセット数の積が試合数になる")
+    void generatesCourtCountTimesSetCount() {
+        MatchSchedule schedule = serviceWithSeed(2L).generate(sessionId, participants(8), 2, 5);
+        assertEquals(10, schedule.size());
     }
 
     @Test
     @DisplayName("試合番号は1から連番で振られる")
     void assignsSequentialMatchNumbers() {
-        MatchSchedule schedule = serviceWithSeed(3L).generate(sessionId, participants(6), 10);
+        MatchSchedule schedule = serviceWithSeed(3L).generate(sessionId, participants(6), 1, 10);
         for (int i = 0; i < schedule.size(); i++) {
             assertEquals(i + 1, schedule.matches().get(i).matchNumber().value());
         }
@@ -76,7 +84,7 @@ class MatchingDomainServiceTest {
     @Test
     @DisplayName("各試合は重複しない4名で構成される")
     void eachMatchHasFourDistinctParticipants() {
-        MatchSchedule schedule = serviceWithSeed(4L).generate(sessionId, participants(7));
+        MatchSchedule schedule = serviceWithSeed(4L).generate(sessionId, participants(7), 1, 10);
         for (Match match : schedule.matches()) {
             Set<ParticipantId> members = new HashSet<>();
             members.add(match.pairA().player1());
@@ -92,7 +100,7 @@ class MatchingDomainServiceTest {
     void onlyUsesProvidedParticipants() {
         List<ParticipantId> pool = participants(5);
         Set<ParticipantId> allowed = new HashSet<>(pool);
-        MatchSchedule schedule = serviceWithSeed(5L).generate(sessionId, pool);
+        MatchSchedule schedule = serviceWithSeed(5L).generate(sessionId, pool, 1, 10);
         for (Match match : schedule.matches()) {
             assertTrue(allowed.contains(match.pairA().player1()));
             assertTrue(allowed.contains(match.pairA().player2()));
@@ -105,7 +113,7 @@ class MatchingDomainServiceTest {
     @DisplayName("出場回数が公平に分散される(最大と最小の差は1以内)")
     void distributesPlayCountsFairly() {
         List<ParticipantId> pool = participants(7);
-        MatchSchedule schedule = serviceWithSeed(6L).generate(sessionId, pool);
+        MatchSchedule schedule = serviceWithSeed(6L).generate(sessionId, pool, 1, 10);
 
         Map<ParticipantId, Integer> counts = new HashMap<>();
         pool.forEach(p -> counts.put(p, 0));
@@ -121,22 +129,11 @@ class MatchingDomainServiceTest {
     }
 
     @Test
-    @DisplayName("直前の試合と同一カードの連続を避ける(ベストエフォート)")
-    void avoidsImmediateRepeatOfSameCard() {
-        MatchSchedule schedule = serviceWithSeed(7L).generate(sessionId, participants(8));
-        List<Match> matches = schedule.matches();
-        for (int i = 1; i < matches.size(); i++) {
-            assertTrue(!matches.get(i).pairs().equals(matches.get(i - 1).pairs()),
-                    "試合 " + (i + 1) + " が直前と同一カードになっている");
-        }
-    }
-
-    @Test
     @DisplayName("同じシードなら同じスケジュールを生成する(決定的)")
     void deterministicWithSameSeed() {
         List<ParticipantId> pool = participants(6);
-        MatchSchedule a = serviceWithSeed(42L).generate(sessionId, pool);
-        MatchSchedule b = serviceWithSeed(42L).generate(sessionId, pool);
+        MatchSchedule a = serviceWithSeed(42L).generate(sessionId, pool, 1, 10);
+        MatchSchedule b = serviceWithSeed(42L).generate(sessionId, pool, 1, 10);
         assertEquals(a.matches(), b.matches());
     }
 
@@ -144,7 +141,7 @@ class MatchingDomainServiceTest {
     @DisplayName("matchesOf は指定参加者の試合だけを返す")
     void matchesOfFiltersByParticipant() {
         List<ParticipantId> pool = participants(6);
-        MatchSchedule schedule = serviceWithSeed(8L).generate(sessionId, pool);
+        MatchSchedule schedule = serviceWithSeed(8L).generate(sessionId, pool, 1, 10);
 
         ParticipantId target = pool.get(0);
         List<Match> filtered = schedule.matchesOf(target);
@@ -157,10 +154,18 @@ class MatchingDomainServiceTest {
     }
 
     @Test
-    @DisplayName("試合数が0以下の場合は例外を投げる")
-    void throwsWhenMatchCountIsNotPositive() {
+    @DisplayName("セット数が0以下の場合は例外を投げる")
+    void throwsWhenSetCountIsNotPositive() {
         MatchingDomainService service = serviceWithSeed(9L);
         assertThrows(IllegalArgumentException.class,
-                () -> service.generate(sessionId, participants(4), 0));
+                () -> service.generate(sessionId, participants(4), 1, 0));
+    }
+
+    @Test
+    @DisplayName("コート数が0以下の場合は例外を投げる")
+    void throwsWhenCourtCountIsNotPositive() {
+        MatchingDomainService service = serviceWithSeed(9L);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.generate(sessionId, participants(4), 0, 10));
     }
 }

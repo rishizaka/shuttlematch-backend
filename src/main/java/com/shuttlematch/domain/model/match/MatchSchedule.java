@@ -27,4 +27,22 @@ public record MatchSchedule(SessionId sessionId, List<Match> matches) {
                 .filter(match -> match.hasParticipant(participant))
                 .toList();
     }
+
+    /**
+     * 次に開始できるセット番号(開始済みの最大セット + 1)。
+     * セットは 1 から順番にのみ開始できるため、このセット以外は開始できない。
+     */
+    public int nextStartableSetNumber() {
+        int maxStarted = matches.stream()
+                .filter(Match::isStarted)
+                .mapToInt(Match::setNumber)
+                .max()
+                .orElse(0);
+        return maxStarted + 1;
+    }
+
+    /** このスケジュールのセット数。 */
+    public int setCount() {
+        return matches.stream().mapToInt(Match::setNumber).max().orElse(0);
+    }
 }

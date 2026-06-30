@@ -8,10 +8,13 @@ import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Participant;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.session.SessionStatus;
+import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.SessionRepository;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,7 +42,7 @@ class SessionUseCaseTest {
     private CreateSessionCommand createCommand() {
         return new CreateSessionCommand(
                 CircleId.of(UUID.randomUUID()), "練習会", OffsetDateTime.now(),
-                "体育館", null, UserId.of(UUID.randomUUID()));
+                "体育館", null, 2, SessionVisibility.PUBLIC, UserId.of(UUID.randomUUID()));
     }
 
     @Test
@@ -131,6 +134,11 @@ class SessionUseCaseTest {
         @Override
         public Optional<Session> findById(SessionId sessionId) {
             return Optional.ofNullable(store.get(sessionId));
+        }
+
+        @Override
+        public List<Session> findByStatus(SessionStatus status) {
+            return store.values().stream().filter(s -> s.status() == status).toList();
         }
     }
 }

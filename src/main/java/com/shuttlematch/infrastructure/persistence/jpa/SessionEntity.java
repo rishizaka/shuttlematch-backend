@@ -40,8 +40,14 @@ public class SessionEntity {
     @Column(name = "capacity")
     private Integer capacity;
 
+    @Column(name = "court_count")
+    private Integer courtCount;
+
     @Column(name = "status", nullable = false)
     private String status;
+
+    @Column(name = "visibility", nullable = false)
+    private String visibility;
 
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;

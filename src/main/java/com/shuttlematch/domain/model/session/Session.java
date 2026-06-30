@@ -22,29 +22,42 @@ public class Session {
     private OffsetDateTime heldAt;
     private String location;
     private Integer capacity;
+    private Integer courtCount;
     private SessionStatus status;
+    private SessionVisibility visibility;
     private final UserId createdBy;
     private final List<Participant> participants;
 
     private Session(
             SessionId id, CircleId circleId, String title, OffsetDateTime heldAt,
-            String location, Integer capacity, SessionStatus status, UserId createdBy,
-            List<Participant> participants) {
+            String location, Integer capacity, Integer courtCount, SessionStatus status,
+            SessionVisibility visibility, UserId createdBy, List<Participant> participants) {
         this.id = id;
         this.circleId = circleId;
         this.title = title;
         this.heldAt = heldAt;
         this.location = location;
         this.capacity = capacity;
+        this.courtCount = courtCount;
         this.status = status;
+        this.visibility = visibility;
         this.createdBy = createdBy;
         this.participants = participants;
     }
 
-    /** 新規セッションを作成する(受付中で開始)。 */
+    /** 新規セッションを作成する(受付中・公開で開始)。 */
     public static Session create(
             CircleId circleId, String title, OffsetDateTime heldAt,
             String location, Integer capacity, UserId createdBy) {
+        return create(circleId, title, heldAt, location, capacity, null,
+                SessionVisibility.PUBLIC, createdBy);
+    }
+
+    /** 新規セッションを作成する(受付中で開始)。コート数・公開範囲を指定する。 */
+    public static Session create(
+            CircleId circleId, String title, OffsetDateTime heldAt,
+            String location, Integer capacity, Integer courtCount,
+            SessionVisibility visibility, UserId createdBy) {
         Objects.requireNonNull(circleId, "circleId は必須です");
         Objects.requireNonNull(createdBy, "createdBy は必須です");
         Objects.requireNonNull(heldAt, "heldAt は必須です");
@@ -54,16 +67,21 @@ public class Session {
         if (capacity != null && capacity < MIN_PARTICIPANTS) {
             throw new IllegalArgumentException("定員は最低 " + MIN_PARTICIPANTS + " 人以上にしてください");
         }
-        return new Session(SessionId.newId(), circleId, title, heldAt, location, capacity,
-                SessionStatus.OPEN, createdBy, new ArrayList<>());
+        if (courtCount != null && courtCount < 1) {
+            throw new IllegalArgumentException("コート数は1以上にしてください");
+        }
+        SessionVisibility resolved = visibility == null ? SessionVisibility.PUBLIC : visibility;
+        return new Session(SessionId.newId(), circleId, title, heldAt, location, capacity, courtCount,
+                SessionStatus.OPEN, resolved, createdBy, new ArrayList<>());
     }
 
     /** 永続化層からの復元用。 */
     public static Session reconstitute(
             SessionId id, CircleId circleId, String title, OffsetDateTime heldAt,
-            String location, Integer capacity, SessionStatus status, UserId createdBy,
-            List<Participant> participants) {
-        return new Session(id, circleId, title, heldAt, location, capacity, status, createdBy,
+            String location, Integer capacity, Integer courtCount, SessionStatus status,
+            SessionVisibility visibility, UserId createdBy, List<Participant> participants) {
+        return new Session(id, circleId, title, heldAt, location, capacity, courtCount, status,
+                visibility == null ? SessionVisibility.PUBLIC : visibility, createdBy,
                 new ArrayList<>(participants));
     }
 
@@ -148,8 +166,16 @@ public class Session {
         return capacity;
     }
 
+    public Integer courtCount() {
+        return courtCount;
+    }
+
     public SessionStatus status() {
         return status;
+    }
+
+    public SessionVisibility visibility() {
+        return visibility;
     }
 
     public UserId createdBy() {

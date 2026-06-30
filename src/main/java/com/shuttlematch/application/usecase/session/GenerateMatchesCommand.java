@@ -8,8 +8,8 @@ import com.shuttlematch.domain.service.MatchingDomainService;
  */
 public record GenerateMatchesCommand(SessionId sessionId, int matchCount) {
 
-    /** 試合数を省略した場合はデフォルト(15試合)を使う。 */
+    /** セット数を省略した場合はデフォルト(10セット)を使う。 */
     public GenerateMatchesCommand(SessionId sessionId) {
-        this(sessionId, MatchingDomainService.DEFAULT_MATCH_COUNT);
+        this(sessionId, MatchingDomainService.DEFAULT_SET_COUNT);
     }
 }

@@ -16,31 +16,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
-import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
  * ダブルスのランダムマッチングを行うドメインサービス。
  * <p>
- * 方針:
+ * コート数とセット数に応じて試合を生成する。1セットはコート数分の試合を持ち、
+ * 各コートで4名が同時にプレーする(同じ人が同じセット内で2コートに出ることはない)。
  * <ul>
- *   <li>各試合の4名は「出場回数が少ない順」に選ぶ。これにより参加者全員の
- *       出場回数が均等になる(奇数人数時の輪番もこの仕組みで自然に実現される)。</li>
- *   <li>タイブレークおよびペア分けは Fisher-Yates シャッフルでランダム化する。</li>
- *   <li>直前の試合と同一カードが連続しないようベストエフォートで回避する。</li>
+ *   <li>各セットの出場者は「出場回数が少ない順」に 4×コート数 名を選ぶ(公平な輪番)。</li>
+ *   <li>タイブレーク・ペア分けは Fisher-Yates シャッフルでランダム化する。</li>
  * </ul>
- * 乱数生成器を注入できるため、テストではシード固定で決定的に検証できる。
  */
 public class MatchingDomainService {
 
-    /** ダブルス1試合に必要な最低人数。 */
-    public static final int MIN_PARTICIPANTS = 4;
-    /** 1セッションあたりのデフォルト試合数。 */
-    public static final int DEFAULT_MATCH_COUNT = 15;
-    /** 同一カード連続を避けるための再シャッフル試行回数の上限。 */
-    private static final int MAX_RESHUFFLE_ATTEMPTS = 10;
-    /** 1試合あたりの人数(ダブルス)。 */
+    /** ダブルス1試合の人数。 */
     private static final int PLAYERS_PER_MATCH = 4;
+    /** デフォルトのセット数。 */
+    public static final int DEFAULT_SET_COUNT = 10;
 
     private final RandomGenerator random;
 
@@ -52,66 +45,59 @@ public class MatchingDomainService {
         this.random = Objects.requireNonNull(random, "random は null にできません");
     }
 
-    /** デフォルト試合数(15)で生成する。 */
-    public MatchSchedule generate(SessionId sessionId, List<ParticipantId> participants) {
-        return generate(sessionId, participants, DEFAULT_MATCH_COUNT);
-    }
-
-    public MatchSchedule generate(SessionId sessionId, List<ParticipantId> participants, int matchCount) {
+    /**
+     * 試合を生成する。
+     *
+     * @param courtCount コート数(1以上)
+     * @param setCount   セット数(1以上)
+     */
+    public MatchSchedule generate(
+            SessionId sessionId, List<ParticipantId> participants, int courtCount, int setCount) {
         Objects.requireNonNull(sessionId, "sessionId は必須です");
         Objects.requireNonNull(participants, "participants は必須です");
-        if (matchCount < 1) {
-            throw new IllegalArgumentException("試合数は1以上である必要があります: " + matchCount);
+        if (courtCount < 1) {
+            throw new IllegalArgumentException("コート数は1以上である必要があります: " + courtCount);
+        }
+        if (setCount < 1) {
+            throw new IllegalArgumentException("セット数は1以上である必要があります: " + setCount);
         }
 
-        // 重複参加者を除去(登録ユーザーの重複は本来上流で防がれるが念のため)
         List<ParticipantId> pool = new ArrayList<>(new LinkedHashSet<>(participants));
-        if (pool.size() < MIN_PARTICIPANTS) {
+        int required = PLAYERS_PER_MATCH * courtCount;
+        if (pool.size() < required) {
             throw new IllegalArgumentException(
-                    "ダブルスの試合を生成するには最低 " + MIN_PARTICIPANTS + " 人必要です (現在 " + pool.size() + " 人)");
+                    "コート数 " + courtCount + " の試合には最低 " + required + " 人必要です (現在 " + pool.size() + " 人)");
         }
 
         Map<ParticipantId, Integer> playCount = new HashMap<>();
         pool.forEach(p -> playCount.put(p, 0));
 
-        List<Match> matches = new ArrayList<>(matchCount);
-        Set<Pair> previousCard = null;
+        List<Match> matches = new ArrayList<>();
+        int matchNumber = 1;
 
-        for (int number = 1; number <= matchCount; number++) {
-            List<ParticipantId> four = pickLeastPlayed(pool, playCount);
-            Match match = buildMatch(number, four, previousCard);
+        for (int setNumber = 1; setNumber <= setCount; setNumber++) {
+            List<ParticipantId> selected = pickLeastPlayed(pool, playCount, required);
+            fisherYatesShuffle(selected); // セット内のコート割り・ペア分けをランダム化
 
-            matches.add(match);
-            previousCard = match.pairs();
-            four.forEach(p -> playCount.merge(p, 1, Integer::sum));
+            for (int court = 1; court <= courtCount; court++) {
+                int base = (court - 1) * PLAYERS_PER_MATCH;
+                Pair pairA = new Pair(selected.get(base), selected.get(base + 1));
+                Pair pairB = new Pair(selected.get(base + 2), selected.get(base + 3));
+                matches.add(Match.of(MatchNumber.of(matchNumber++), setNumber, court, pairA, pairB));
+            }
+            selected.forEach(p -> playCount.merge(p, 1, Integer::sum));
         }
 
         return new MatchSchedule(sessionId, matches);
     }
 
-    /** 出場回数が少ない順に4名を選ぶ(同回数同士はランダムにタイブレーク)。 */
-    private List<ParticipantId> pickLeastPlayed(List<ParticipantId> pool, Map<ParticipantId, Integer> playCount) {
+    /** 出場回数が少ない順に n 名を選ぶ(同回数同士はランダムにタイブレーク)。 */
+    private List<ParticipantId> pickLeastPlayed(
+            List<ParticipantId> pool, Map<ParticipantId, Integer> playCount, int n) {
         List<ParticipantId> candidates = new ArrayList<>(pool);
-        fisherYatesShuffle(candidates);                              // タイブレークをランダム化
-        candidates.sort(Comparator.comparingInt(playCount::get));    // 出場回数の昇順(安定ソート)
-        return new ArrayList<>(candidates.subList(0, PLAYERS_PER_MATCH));
-    }
-
-    /** 4名をシャッフルして2ペアに分ける。直前と同一カードなら数回まで組み替える。 */
-    private Match buildMatch(int number, List<ParticipantId> four, Set<Pair> previousCard) {
-        List<ParticipantId> arrangement = new ArrayList<>(four);
-        Match candidate = null;
-        for (int attempt = 0; attempt < MAX_RESHUFFLE_ATTEMPTS; attempt++) {
-            fisherYatesShuffle(arrangement);
-            Pair pairA = new Pair(arrangement.get(0), arrangement.get(1));
-            Pair pairB = new Pair(arrangement.get(2), arrangement.get(3));
-            candidate = Match.of(MatchNumber.of(number), pairA, pairB);
-            if (previousCard == null || !candidate.pairs().equals(previousCard)) {
-                return candidate;
-            }
-        }
-        // ベストエフォート: 回避しきれない場合は最後の候補を採用
-        return candidate;
+        fisherYatesShuffle(candidates);
+        candidates.sort(Comparator.comparingInt(playCount::get));
+        return new ArrayList<>(candidates.subList(0, n));
     }
 
     private void fisherYatesShuffle(List<?> list) {

@@ -8,6 +8,7 @@ import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,19 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
         jpaRepository.deleteBySessionId(sessionId.value());
     }
 
+    @Override
+    public Optional<MatchSchedule> startMatch(SessionId sessionId, int matchNumber, OffsetDateTime startedAt) {
+        return jpaRepository.findBySessionId(sessionId.value())
+                .flatMap(schedule -> {
+                    Optional<MatchEntity> target = schedule.getMatches().stream()
+                            .filter(m -> m.getMatchNumber() == matchNumber)
+                            .findFirst();
+                    target.ifPresent(m -> m.setStartedAt(startedAt));
+                    // JPA のダーティチェックで started_at が更新される
+                    return target.map(m -> toDomain(jpaRepository.save(schedule)));
+                });
+    }
+
     private MatchScheduleEntity toEntity(MatchSchedule schedule) {
         MatchScheduleEntity entity = new MatchScheduleEntity();
         entity.setId(UUID.randomUUID());
@@ -55,11 +69,13 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
         MatchEntity entity = new MatchEntity();
         entity.setId(UUID.randomUUID());
         entity.setMatchNumber(match.matchNumber().value());
+        entity.setSetNumber(match.setNumber());
         entity.setPairAPlayer1Id(match.pairA().player1().value());
         entity.setPairAPlayer2Id(match.pairA().player2().value());
         entity.setPairBPlayer1Id(match.pairB().player1().value());
         entity.setPairBPlayer2Id(match.pairB().player2().value());
         entity.setCourtNumber(match.courtNumber());
+        entity.setStartedAt(match.startedAt());
         return entity;
     }
 
@@ -77,6 +93,8 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
         Pair pairB = new Pair(
                 ParticipantId.of(entity.getPairBPlayer1Id()),
                 ParticipantId.of(entity.getPairBPlayer2Id()));
-        return new Match(MatchNumber.of(entity.getMatchNumber()), pairA, pairB, entity.getCourtNumber());
+        int courtNumber = entity.getCourtNumber() != null ? entity.getCourtNumber() : 1;
+        return new Match(MatchNumber.of(entity.getMatchNumber()), entity.getSetNumber(), courtNumber,
+                pairA, pairB, entity.getStartedAt());
     }
 }

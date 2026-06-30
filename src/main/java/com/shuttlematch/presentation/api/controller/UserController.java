@@ -37,8 +37,8 @@ public class UserController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public UserResponse create(@Valid @RequestBody CreateUserRequest request) {
-        return UserResponse.from(
-                createUserUseCase.execute(new CreateUserCommand(request.name(), request.email())));
+        return UserResponse.from(createUserUseCase.execute(
+                new CreateUserCommand(request.name(), request.email(), request.password())));
     }
 
     @GetMapping("/{userId}")

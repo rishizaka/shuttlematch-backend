@@ -1,5 +1,6 @@
 package com.shuttlematch.presentation.api;
 
+import com.shuttlematch.application.InvalidCredentialsException;
 import com.shuttlematch.application.ResourceNotFoundException;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,6 +49,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
         return problem(HttpStatus.NOT_FOUND, "リソースが見つかりません", ex.getMessage());
+    }
+
+    /** 認証失敗 → 401。 */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ProblemDetail handleInvalidCredentials(InvalidCredentialsException ex) {
+        return problem(HttpStatus.UNAUTHORIZED, "認証に失敗しました", ex.getMessage());
     }
 
     private ProblemDetail problem(HttpStatus status, String title, String detail) {

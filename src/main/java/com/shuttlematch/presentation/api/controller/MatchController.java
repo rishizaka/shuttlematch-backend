@@ -3,6 +3,7 @@ package com.shuttlematch.presentation.api.controller;
 import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
 import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
+import com.shuttlematch.application.usecase.session.StartMatchUseCase;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.session.SessionId;
@@ -27,12 +28,15 @@ public class MatchController {
 
     private final GenerateMatchesUseCase generateMatchesUseCase;
     private final GetMatchScheduleUseCase getMatchScheduleUseCase;
+    private final StartMatchUseCase startMatchUseCase;
 
     public MatchController(
             GenerateMatchesUseCase generateMatchesUseCase,
-            GetMatchScheduleUseCase getMatchScheduleUseCase) {
+            GetMatchScheduleUseCase getMatchScheduleUseCase,
+            StartMatchUseCase startMatchUseCase) {
         this.generateMatchesUseCase = generateMatchesUseCase;
         this.getMatchScheduleUseCase = getMatchScheduleUseCase;
+        this.startMatchUseCase = startMatchUseCase;
     }
 
     /** 試合を生成する(既存があれば再生成)。 */
@@ -44,6 +48,15 @@ public class MatchController {
         GenerateMatchesCommand command = toCommand(SessionId.of(sessionId), request);
         MatchSchedule schedule = generateMatchesUseCase.execute(command);
         return MatchScheduleResponse.from(schedule);
+    }
+
+    /** 指定試合のセットを開始する(開始時刻を記録)。アクティブなセットは最新開始のものとなる。 */
+    @PostMapping("/{matchNumber}/start")
+    public MatchScheduleResponse start(
+            @PathVariable UUID sessionId,
+            @PathVariable int matchNumber) {
+        return MatchScheduleResponse.from(
+                startMatchUseCase.execute(SessionId.of(sessionId), matchNumber));
     }
 
     /** 試合スケジュールを取得する。 */

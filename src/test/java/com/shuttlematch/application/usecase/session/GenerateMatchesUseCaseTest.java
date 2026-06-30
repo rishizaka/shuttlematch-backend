@@ -9,6 +9,7 @@ import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
+import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.SessionRepository;
@@ -57,7 +58,8 @@ class GenerateMatchesUseCaseTest {
 
         MatchSchedule result = useCase.execute(new GenerateMatchesCommand(session.id()));
 
-        assertThat(result.size()).isEqualTo(15);
+        // 1コート(デフォルト) × デフォルト10セット = 10試合
+        assertThat(result.size()).isEqualTo(10);
         assertThat(matchScheduleRepository.findBySessionId(session.id())).contains(result);
         assertThat(sessionRepository.findById(session.id()).orElseThrow().status())
                 .isEqualTo(SessionStatus.GENERATED);
@@ -107,7 +109,8 @@ class GenerateMatchesUseCaseTest {
     void throwsWhenSessionClosed() {
         Session closed = Session.reconstitute(
                 SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, SessionStatus.CLOSED, UserId.of(UUID.randomUUID()), List.of());
+                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
+                UserId.of(UUID.randomUUID()), List.of());
         sessionRepository.save(closed);
 
         assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(closed.id())))
@@ -128,6 +131,11 @@ class GenerateMatchesUseCaseTest {
         @Override
         public Optional<Session> findById(SessionId sessionId) {
             return Optional.ofNullable(store.get(sessionId));
+        }
+
+        @Override
+        public List<Session> findByStatus(SessionStatus status) {
+            return store.values().stream().filter(s -> s.status() == status).toList();
         }
     }
 
@@ -152,6 +160,12 @@ class GenerateMatchesUseCaseTest {
         public void deleteBySessionId(SessionId sessionId) {
             deleteCount++;
             store.removeIf(s -> s.sessionId().equals(sessionId));
+        }
+
+        @Override
+        public java.util.Optional<com.shuttlematch.domain.model.match.MatchSchedule> startMatch(
+                SessionId sessionId, int matchNumber, java.time.OffsetDateTime startedAt) {
+            return findBySessionId(sessionId);
         }
 
         long count(SessionId sessionId) {

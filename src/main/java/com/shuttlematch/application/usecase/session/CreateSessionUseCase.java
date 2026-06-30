@@ -26,6 +26,8 @@ public class CreateSessionUseCase {
                 command.heldAt(),
                 command.location(),
                 command.capacity(),
+                command.courtCount(),
+                command.visibility(),
                 command.createdBy());
         return sessionRepository.save(session);
     }

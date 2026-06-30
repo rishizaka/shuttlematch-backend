@@ -6,6 +6,7 @@ import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
+import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.SessionRepository;
 
@@ -45,13 +46,22 @@ public class SessionRepositoryAdapter implements SessionRepository {
         entity.setHeldAt(session.heldAt());
         entity.setLocation(session.location());
         entity.setCapacity(session.capacity());
+        entity.setCourtCount(session.courtCount());
         entity.setStatus(session.status().name());
+        entity.setVisibility(session.visibility().name());
         entity.setCreatedBy(session.createdBy().value());
         sessionJpaRepository.save(entity);
 
         reconcileParticipants(session);
 
         return findById(session.id()).orElseThrow();
+    }
+
+    @Override
+    public List<Session> findByStatus(SessionStatus status) {
+        return sessionJpaRepository.findByStatusOrderByHeldAtAsc(status.name()).stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     private void reconcileParticipants(Session session) {
@@ -106,7 +116,9 @@ public class SessionRepositoryAdapter implements SessionRepository {
                 entity.getHeldAt(),
                 entity.getLocation(),
                 entity.getCapacity(),
+                entity.getCourtCount(),
                 SessionStatus.valueOf(entity.getStatus()),
+                SessionVisibility.valueOf(entity.getVisibility()),
                 UserId.of(entity.getCreatedBy()),
                 participants);
     }

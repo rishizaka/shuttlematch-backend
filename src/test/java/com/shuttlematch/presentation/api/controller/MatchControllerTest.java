@@ -38,6 +38,9 @@ class MatchControllerTest {
     @MockitoBean
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
 
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.StartMatchUseCase startMatchUseCase;
+
     private final UUID sessionId = UUID.randomUUID();
 
     private MatchSchedule sampleSchedule() {
@@ -45,7 +48,7 @@ class MatchControllerTest {
         ParticipantId p2 = ParticipantId.newId();
         ParticipantId p3 = ParticipantId.newId();
         ParticipantId p4 = ParticipantId.newId();
-        Match match = Match.of(MatchNumber.of(1), new Pair(p1, p2), new Pair(p3, p4));
+        Match match = Match.of(MatchNumber.of(1), 1, 1, new Pair(p1, p2), new Pair(p3, p4));
         return new MatchSchedule(SessionId.of(sessionId), List.of(match));
     }
 
@@ -93,6 +96,17 @@ class MatchControllerTest {
                         .contentType("application/json")
                         .content("{\"matchCount\": 0}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST start: 200 で更新後スケジュールを返す")
+    void startReturnsSchedule() throws Exception {
+        when(startMatchUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
+                .thenReturn(sampleSchedule());
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/{n}/start", sessionId, 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matches.length()").value(1));
     }
 
     @Test
