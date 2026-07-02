@@ -55,6 +55,12 @@ class SessionControllerTest {
     @MockitoBean
     private com.shuttlematch.application.usecase.session.CloseSessionUseCase closeSessionUseCase;
 
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.QuickCreateSessionUseCase quickCreateSessionUseCase;
+
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.RenameParticipantUseCase renameParticipantUseCase;
+
     private final UUID circleId = UUID.randomUUID();
 
     private Session sampleSession() {
@@ -100,6 +106,35 @@ class SessionControllerTest {
 
         mockMvc.perform(get("/api/v1/sessions/{sessionId}", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("POST quick: 201 で作成したセッションを返す")
+    void quickCreateReturnsCreated() throws Exception {
+        when(quickCreateSessionUseCase.execute(
+                any(com.shuttlematch.application.usecase.session.QuickCreateSessionCommand.class)))
+                .thenReturn(sampleSession());
+
+        String body = """
+                {"title": "7/2 夜練", "courtCount": 2, "participantCount": 8, "createdBy": "%s"}
+                """.formatted(UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions/quick", circleId)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title").value("練習会"));
+    }
+
+    @Test
+    @DisplayName("POST quick: 参加人数が0以下は 400")
+    void quickCreateValidationFails() throws Exception {
+        String body = """
+                {"title": "x", "courtCount": 1, "participantCount": 0, "createdBy": "%s"}
+                """.formatted(UUID.randomUUID());
+
+        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions/quick", circleId)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

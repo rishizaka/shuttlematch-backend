@@ -5,6 +5,8 @@ import com.shuttlematch.application.usecase.session.AddParticipantUseCase;
 import com.shuttlematch.application.usecase.session.MarkParticipantLeftUseCase;
 import com.shuttlematch.application.usecase.session.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.session.RemoveParticipantUseCase;
+import com.shuttlematch.application.usecase.session.RenameParticipantUseCase;
+import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
@@ -12,6 +14,7 @@ import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.presentation.api.request.AddParticipantRequest;
 import com.shuttlematch.presentation.api.response.SessionResponse;
 
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,16 +36,19 @@ public class ParticipantController {
     private final RemoveParticipantUseCase removeParticipantUseCase;
     private final MarkParticipantLeftUseCase markParticipantLeftUseCase;
     private final ReactivateParticipantUseCase reactivateParticipantUseCase;
+    private final RenameParticipantUseCase renameParticipantUseCase;
 
     public ParticipantController(
             AddParticipantUseCase addParticipantUseCase,
             RemoveParticipantUseCase removeParticipantUseCase,
             MarkParticipantLeftUseCase markParticipantLeftUseCase,
-            ReactivateParticipantUseCase reactivateParticipantUseCase) {
+            ReactivateParticipantUseCase reactivateParticipantUseCase,
+            RenameParticipantUseCase renameParticipantUseCase) {
         this.addParticipantUseCase = addParticipantUseCase;
         this.removeParticipantUseCase = removeParticipantUseCase;
         this.markParticipantLeftUseCase = markParticipantLeftUseCase;
         this.reactivateParticipantUseCase = reactivateParticipantUseCase;
+        this.renameParticipantUseCase = renameParticipantUseCase;
     }
 
     /** 参加登録(登録ユーザーまたはゲスト)。 */
@@ -78,6 +84,17 @@ public class ParticipantController {
     public SessionResponse reactivate(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
         Session session = reactivateParticipantUseCase.execute(
                 SessionId.of(sessionId), ParticipantId.of(participantId));
+        return SessionResponse.from(session);
+    }
+
+    /** 名前(ニックネーム)を変更する。番号のまま作った参加者に後から名前を付ける。 */
+    @PostMapping("/{participantId}/rename")
+    public SessionResponse rename(
+            @PathVariable UUID sessionId,
+            @PathVariable UUID participantId,
+            @Valid @RequestBody RenameParticipantRequest request) {
+        Session session = renameParticipantUseCase.execute(
+                SessionId.of(sessionId), ParticipantId.of(participantId), request.name());
         return SessionResponse.from(session);
     }
 }

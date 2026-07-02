@@ -5,6 +5,7 @@ import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
 import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
 import com.shuttlematch.application.usecase.session.ReplanFutureSetsUseCase;
+import com.shuttlematch.application.usecase.session.RevertSetUseCase;
 import com.shuttlematch.application.usecase.session.StartSetUseCase;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.application.ResourceNotFoundException;
@@ -34,18 +35,21 @@ public class MatchController {
     private final StartSetUseCase startSetUseCase;
     private final AddSetsUseCase addSetsUseCase;
     private final ReplanFutureSetsUseCase replanFutureSetsUseCase;
+    private final RevertSetUseCase revertSetUseCase;
 
     public MatchController(
             GenerateMatchesUseCase generateMatchesUseCase,
             GetMatchScheduleUseCase getMatchScheduleUseCase,
             StartSetUseCase startSetUseCase,
             AddSetsUseCase addSetsUseCase,
-            ReplanFutureSetsUseCase replanFutureSetsUseCase) {
+            ReplanFutureSetsUseCase replanFutureSetsUseCase,
+            RevertSetUseCase revertSetUseCase) {
         this.generateMatchesUseCase = generateMatchesUseCase;
         this.getMatchScheduleUseCase = getMatchScheduleUseCase;
         this.startSetUseCase = startSetUseCase;
         this.addSetsUseCase = addSetsUseCase;
         this.replanFutureSetsUseCase = replanFutureSetsUseCase;
+        this.revertSetUseCase = revertSetUseCase;
     }
 
     /** 試合を生成する(既存があれば再生成)。 */
@@ -83,6 +87,15 @@ public class MatchController {
             @PathVariable int setNumber) {
         return MatchScheduleResponse.from(
                 startSetUseCase.execute(SessionId.of(sessionId), setNumber));
+    }
+
+    /** 進行中(最後に開始した)セットを開始前に戻す(開始時刻を消す)。 */
+    @PostMapping("/sets/{setNumber}/revert")
+    public MatchScheduleResponse revertSet(
+            @PathVariable UUID sessionId,
+            @PathVariable int setNumber) {
+        return MatchScheduleResponse.from(
+                revertSetUseCase.execute(SessionId.of(sessionId), setNumber));
     }
 
     /** 試合スケジュールを取得する。 */

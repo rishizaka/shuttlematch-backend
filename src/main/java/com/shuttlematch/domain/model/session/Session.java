@@ -125,6 +125,19 @@ public class Session {
         return updateParticipantStatus(participantId, ParticipantStatus.ACTIVE);
     }
 
+    /** ゲスト参加者の名前(ニックネーム)を変更する。存在しなければ false。 */
+    public boolean renameParticipant(ParticipantId participantId, String newName) {
+        ensureNotClosed();
+        for (int i = 0; i < participants.size(); i++) {
+            Participant p = participants.get(i);
+            if (p.id().equals(participantId)) {
+                participants.set(i, p.withGuestName(newName));
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean updateParticipantStatus(ParticipantId participantId, ParticipantStatus status) {
         ensureNotClosed();
         for (int i = 0; i < participants.size(); i++) {

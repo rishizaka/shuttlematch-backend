@@ -40,6 +40,14 @@ public record Participant(ParticipantId id, UserId userId, String guestName, Par
         return new Participant(id, userId, guestName, newStatus);
     }
 
+    /** ゲスト名(ニックネーム)を変えた新しいインスタンスを返す。ゲストのみ変更可。 */
+    public Participant withGuestName(String newGuestName) {
+        if (!isGuest()) {
+            throw new IllegalStateException("登録ユーザーの名前は変更できません");
+        }
+        return new Participant(id, null, newGuestName, status);
+    }
+
     public boolean isGuest() {
         return userId == null;
     }

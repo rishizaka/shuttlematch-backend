@@ -25,12 +25,14 @@ class ParticipantAvailabilityUseCaseTest {
     private FakeSessionRepository sessionRepository;
     private MarkParticipantLeftUseCase markLeft;
     private ReactivateParticipantUseCase reactivate;
+    private RenameParticipantUseCase rename;
 
     @BeforeEach
     void setUp() {
         sessionRepository = new FakeSessionRepository();
         markLeft = new MarkParticipantLeftUseCase(sessionRepository);
         reactivate = new ReactivateParticipantUseCase(sessionRepository);
+        rename = new RenameParticipantUseCase(sessionRepository);
     }
 
     private Session sessionWithGuest() {
@@ -55,6 +57,26 @@ class ParticipantAvailabilityUseCaseTest {
         Session afterBack = reactivate.execute(session.id(), pid);
         assertThat(afterBack.participants().get(0).status()).isEqualTo(ParticipantStatus.ACTIVE);
         assertThat(afterBack.activeParticipantIds()).containsExactly(pid);
+    }
+
+    @Test
+    @DisplayName("rename で番号参加者に名前を付けられる")
+    void renamesParticipant() {
+        Session session = sessionWithGuest();
+        var pid = session.participants().get(0).id();
+
+        Session result = rename.execute(session.id(), pid, "太郎");
+
+        assertThat(result.participants().get(0).guestName()).isEqualTo("太郎");
+    }
+
+    @Test
+    @DisplayName("rename で空名は例外")
+    void renameRejectsBlank() {
+        Session session = sessionWithGuest();
+        var pid = session.participants().get(0).id();
+        assertThatThrownBy(() -> rename.execute(session.id(), pid, "  "))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -5,12 +5,15 @@ import com.shuttlematch.application.usecase.session.CreateSessionCommand;
 import com.shuttlematch.application.usecase.session.CreateSessionUseCase;
 import com.shuttlematch.application.usecase.session.GetSessionUseCase;
 import com.shuttlematch.application.usecase.session.ListSessionsUseCase;
+import com.shuttlematch.application.usecase.session.QuickCreateSessionCommand;
+import com.shuttlematch.application.usecase.session.QuickCreateSessionUseCase;
 import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.presentation.api.request.CreateSessionRequest;
+import com.shuttlematch.presentation.api.request.QuickCreateSessionRequest;
 import com.shuttlematch.presentation.api.response.SessionResponse;
 
 import jakarta.validation.Valid;
@@ -35,16 +38,19 @@ public class SessionController {
     private final GetSessionUseCase getSessionUseCase;
     private final ListSessionsUseCase listSessionsUseCase;
     private final CloseSessionUseCase closeSessionUseCase;
+    private final QuickCreateSessionUseCase quickCreateSessionUseCase;
 
     public SessionController(
             CreateSessionUseCase createSessionUseCase,
             GetSessionUseCase getSessionUseCase,
             ListSessionsUseCase listSessionsUseCase,
-            CloseSessionUseCase closeSessionUseCase) {
+            CloseSessionUseCase closeSessionUseCase,
+            QuickCreateSessionUseCase quickCreateSessionUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.getSessionUseCase = getSessionUseCase;
         this.listSessionsUseCase = listSessionsUseCase;
         this.closeSessionUseCase = closeSessionUseCase;
+        this.quickCreateSessionUseCase = quickCreateSessionUseCase;
     }
 
     @PostMapping("/api/v1/circles/{circleId}/sessions")
@@ -63,6 +69,21 @@ public class SessionController {
                 UserId.of(request.createdBy()));
         Session session = createSessionUseCase.execute(command);
         return SessionResponse.from(session);
+    }
+
+    /** かんたん作成: 参加人数・コート数・タイトルのみで、番号参加者の登録と試合表生成まで行う。 */
+    @PostMapping("/api/v1/circles/{circleId}/sessions/quick")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SessionResponse quickCreate(
+            @PathVariable UUID circleId,
+            @Valid @RequestBody QuickCreateSessionRequest request) {
+        QuickCreateSessionCommand command = new QuickCreateSessionCommand(
+                CircleId.of(circleId),
+                request.title(),
+                request.courtCount(),
+                request.participantCount(),
+                UserId.of(request.createdBy()));
+        return SessionResponse.from(quickCreateSessionUseCase.execute(command));
     }
 
     /**

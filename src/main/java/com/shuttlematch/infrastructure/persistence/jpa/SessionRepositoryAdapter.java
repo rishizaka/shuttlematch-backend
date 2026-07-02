@@ -83,13 +83,23 @@ public class SessionRepositoryAdapter implements SessionRepository {
             participantJpaRepository.deleteAll(toDelete);
         }
 
-        // 新規は追加、既存は状態(早退など)を更新
+        // 新規は追加、既存は状態(早退など)・名前(ニックネーム)を更新
         for (Participant participant : session.participants()) {
             SessionParticipantEntity entity = existingById.get(participant.id().value());
             if (entity == null) {
                 participantJpaRepository.save(toEntity(sessionId, participant));
-            } else if (!participant.status().name().equals(entity.getStatus())) {
+                continue;
+            }
+            boolean changed = false;
+            if (!participant.status().name().equals(entity.getStatus())) {
                 entity.setStatus(participant.status().name());
+                changed = true;
+            }
+            if (!java.util.Objects.equals(participant.guestName(), entity.getGuestName())) {
+                entity.setGuestName(participant.guestName());
+                changed = true;
+            }
+            if (changed) {
                 participantJpaRepository.save(entity);
             }
         }
