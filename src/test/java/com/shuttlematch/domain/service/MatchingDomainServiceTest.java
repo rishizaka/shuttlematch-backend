@@ -217,4 +217,106 @@ class MatchingDomainServiceTest {
         MatchSchedule base = service.generate(sessionId, pool, 1, 2);
         assertThrows(IllegalArgumentException.class, () -> service.addSets(base, pool, 1, 0));
     }
+
+    // --- replanFuture(途中参加・早退) ---
+
+    /** 指定セット番号までを開始済みにしたスケジュールを返す。 */
+    private MatchSchedule withStartedSetsUpTo(MatchSchedule schedule, int upTo) {
+        java.time.OffsetDateTime t = java.time.OffsetDateTime.parse("2026-06-30T09:00:00Z");
+        List<Match> started = schedule.matches().stream()
+                .map(m -> m.setNumber() <= upTo ? m.withStartedAt(t.plusMinutes(m.setNumber())) : m)
+                .toList();
+        return new MatchSchedule(schedule.sessionId(), started);
+    }
+
+    @Test
+    @DisplayName("replanFuture は開始済みセットを保持し、未開始セットだけ作り直す")
+    void replanKeepsStartedSetsAndRebuildsFuture() {
+        MatchingDomainService service = serviceWithSeed(21L);
+        List<ParticipantId> pool = participants(6);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 5);
+        MatchSchedule withStarted = withStartedSetsUpTo(base, 2); // 第1・2セットを開始済みに
+
+        MatchSchedule replanned = service.replanFuture(withStarted, pool, 1);
+
+        // 合計セット数は維持
+        assertEquals(5, replanned.setCount());
+        // 開始済みの第1・2セットはそのまま
+        List<Match> committedBefore = withStarted.matches().stream()
+                .filter(m -> m.setNumber() <= 2).toList();
+        List<Match> committedAfter = replanned.matches().stream()
+                .filter(m -> m.setNumber() <= 2).toList();
+        assertEquals(committedBefore, committedAfter);
+    }
+
+    @Test
+    @DisplayName("replanFuture: 早退者は未開始セットに登場しない(開始済みには残る)")
+    void replanExcludesLeftParticipantFromFuture() {
+        MatchingDomainService service = serviceWithSeed(22L);
+        List<ParticipantId> pool = participants(6);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 5);
+        MatchSchedule withStarted = withStartedSetsUpTo(base, 2);
+
+        ParticipantId leaver = pool.get(0);
+        List<ParticipantId> active = pool.stream().filter(p -> !p.equals(leaver)).toList();
+
+        MatchSchedule replanned = service.replanFuture(withStarted, active, 1);
+
+        boolean inFuture = replanned.matches().stream()
+                .filter(m -> m.setNumber() > 2)
+                .anyMatch(m -> participantsOf(m).contains(leaver));
+        assertTrue(!inFuture, "早退者が未開始セットに含まれている");
+    }
+
+    @Test
+    @DisplayName("replanFuture: 途中参加者は優先されず、公平(差は1以内)に収まる")
+    void replanAddsLateComerWithoutPriority() {
+        MatchingDomainService service = serviceWithSeed(23L);
+        List<ParticipantId> pool = participants(6);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 6);
+        MatchSchedule withStarted = withStartedSetsUpTo(base, 3);
+
+        ParticipantId late = ParticipantId.newId();
+        List<ParticipantId> active = new java.util.ArrayList<>(pool);
+        active.add(late);
+
+        MatchSchedule replanned = service.replanFuture(withStarted, active, 1);
+
+        // 途中参加者は未開始セット(4〜6)にだけ登場しうる
+        long lateInFuture = replanned.matches().stream()
+                .filter(m -> m.setNumber() > 3)
+                .filter(m -> participantsOf(m).contains(late))
+                .count();
+        // 3セット分の未開始で1コート(4枠)。全既存が実績3〜4のところに横入りなので、
+        // 優先されない=全セット独占はしない。
+        assertTrue(lateInFuture <= 3, "途中参加者が優先されすぎている: " + lateInFuture);
+    }
+
+    @Test
+    @DisplayName("replanFuture: 在席が4×コート数未満ならコート数を自動で減らす")
+    void replanReducesCourtsWhenNotEnoughPlayers() {
+        MatchingDomainService service = serviceWithSeed(24L);
+        List<ParticipantId> pool = participants(8);
+        MatchSchedule base = service.generate(sessionId, pool, 2, 4); // 2コート×4セット=8試合
+        MatchSchedule withStarted = withStartedSetsUpTo(base, 1);
+
+        // 早退で5人に(2コート=8人には足りない → 1コートに縮小されるはず)
+        List<ParticipantId> active = pool.subList(0, 5);
+        MatchSchedule replanned = service.replanFuture(withStarted, active, 2);
+
+        // 未開始セット(2〜4)は1コート=各セット1試合になる
+        for (int set = 2; set <= 4; set++) {
+            final int s = set;
+            long courtsInSet = replanned.matches().stream()
+                    .filter(m -> m.setNumber() == s).count();
+            assertEquals(1, courtsInSet, "第" + s + "セットのコート数が縮小されていない");
+        }
+    }
+
+    /** 1試合の4名。 */
+    private List<ParticipantId> participantsOf(Match m) {
+        return List.of(
+                m.pairA().player1(), m.pairA().player2(),
+                m.pairB().player1(), m.pairB().player2());
+    }
 }

@@ -44,6 +44,12 @@ class SessionControllerTest {
     @MockitoBean
     private com.shuttlematch.application.usecase.session.RemoveParticipantUseCase removeParticipantUseCase;
 
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.MarkParticipantLeftUseCase markParticipantLeftUseCase;
+
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.ReactivateParticipantUseCase reactivateParticipantUseCase;
+
     private final UUID circleId = UUID.randomUUID();
 
     private Session sampleSession() {

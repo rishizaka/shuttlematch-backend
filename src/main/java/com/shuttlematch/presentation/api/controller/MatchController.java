@@ -4,6 +4,7 @@ import com.shuttlematch.application.usecase.session.AddSetsUseCase;
 import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
 import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
+import com.shuttlematch.application.usecase.session.ReplanFutureSetsUseCase;
 import com.shuttlematch.application.usecase.session.StartSetUseCase;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.application.ResourceNotFoundException;
@@ -32,16 +33,19 @@ public class MatchController {
     private final GetMatchScheduleUseCase getMatchScheduleUseCase;
     private final StartSetUseCase startSetUseCase;
     private final AddSetsUseCase addSetsUseCase;
+    private final ReplanFutureSetsUseCase replanFutureSetsUseCase;
 
     public MatchController(
             GenerateMatchesUseCase generateMatchesUseCase,
             GetMatchScheduleUseCase getMatchScheduleUseCase,
             StartSetUseCase startSetUseCase,
-            AddSetsUseCase addSetsUseCase) {
+            AddSetsUseCase addSetsUseCase,
+            ReplanFutureSetsUseCase replanFutureSetsUseCase) {
         this.generateMatchesUseCase = generateMatchesUseCase;
         this.getMatchScheduleUseCase = getMatchScheduleUseCase;
         this.startSetUseCase = startSetUseCase;
         this.addSetsUseCase = addSetsUseCase;
+        this.replanFutureSetsUseCase = replanFutureSetsUseCase;
     }
 
     /** 試合を生成する(既存があれば再生成)。 */
@@ -63,6 +67,13 @@ public class MatchController {
         int additionalSetCount = (request == null || request.setCount() == null) ? 1 : request.setCount();
         return MatchScheduleResponse.from(
                 addSetsUseCase.execute(SessionId.of(sessionId), additionalSetCount));
+    }
+
+    /** 未開始セットを現在の在席者で再編成する(途中参加・早退の反映)。開始済みセットは保持。 */
+    @PostMapping("/replan")
+    public MatchScheduleResponse replan(@PathVariable UUID sessionId) {
+        return MatchScheduleResponse.from(
+                replanFutureSetsUseCase.execute(SessionId.of(sessionId)));
     }
 
     /** 指定セット(全コート)を開始する(開始時刻を記録)。アクティブなセットは最新開始のものとなる。 */

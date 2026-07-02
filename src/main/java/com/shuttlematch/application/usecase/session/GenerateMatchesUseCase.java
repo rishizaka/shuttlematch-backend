@@ -43,7 +43,7 @@ public class GenerateMatchesUseCase {
 
         int courtCount = session.courtCount() != null ? session.courtCount() : 1;
         MatchSchedule schedule = matchingDomainService.generate(
-                session.id(), session.participantIds(), courtCount, command.matchCount());
+                session.id(), session.activeParticipantIds(), courtCount, command.matchCount());
 
         // 再生成に対応するため既存スケジュールを削除してから保存する
         matchScheduleRepository.deleteBySessionId(session.id());

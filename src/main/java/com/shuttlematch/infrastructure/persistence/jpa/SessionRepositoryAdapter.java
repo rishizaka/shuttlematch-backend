@@ -3,6 +3,7 @@ package com.shuttlematch.infrastructure.persistence.jpa;
 import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Participant;
 import com.shuttlematch.domain.model.session.ParticipantId;
+import com.shuttlematch.domain.model.session.ParticipantStatus;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
@@ -11,6 +12,7 @@ import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.SessionRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -67,9 +69,8 @@ public class SessionRepositoryAdapter implements SessionRepository {
     private void reconcileParticipants(Session session) {
         UUID sessionId = session.id().value();
         List<SessionParticipantEntity> existing = participantJpaRepository.findBySessionId(sessionId);
-        Set<UUID> existingIds = existing.stream()
-                .map(SessionParticipantEntity::getId)
-                .collect(Collectors.toSet());
+        Map<UUID, SessionParticipantEntity> existingById = existing.stream()
+                .collect(Collectors.toMap(SessionParticipantEntity::getId, e -> e));
         Set<UUID> desiredIds = session.participants().stream()
                 .map(p -> p.id().value())
                 .collect(Collectors.toSet());
@@ -82,10 +83,14 @@ public class SessionRepositoryAdapter implements SessionRepository {
             participantJpaRepository.deleteAll(toDelete);
         }
 
-        // 新規参加者を追加
+        // 新規は追加、既存は状態(早退など)を更新
         for (Participant participant : session.participants()) {
-            if (!existingIds.contains(participant.id().value())) {
+            SessionParticipantEntity entity = existingById.get(participant.id().value());
+            if (entity == null) {
                 participantJpaRepository.save(toEntity(sessionId, participant));
+            } else if (!participant.status().name().equals(entity.getStatus())) {
+                entity.setStatus(participant.status().name());
+                participantJpaRepository.save(entity);
             }
         }
     }
@@ -102,6 +107,7 @@ public class SessionRepositoryAdapter implements SessionRepository {
         entity.setSessionId(sessionId);
         entity.setUserId(participant.userId() == null ? null : participant.userId().value());
         entity.setGuestName(participant.guestName());
+        entity.setStatus(participant.status().name());
         return entity;
     }
 
@@ -125,6 +131,10 @@ public class SessionRepositoryAdapter implements SessionRepository {
 
     private Participant toParticipant(SessionParticipantEntity entity) {
         UserId userId = entity.getUserId() == null ? null : UserId.of(entity.getUserId());
-        return Participant.reconstitute(ParticipantId.of(entity.getId()), userId, entity.getGuestName());
+        ParticipantStatus status = entity.getStatus() == null
+                ? ParticipantStatus.ACTIVE
+                : ParticipantStatus.valueOf(entity.getStatus());
+        return Participant.reconstitute(
+                ParticipantId.of(entity.getId()), userId, entity.getGuestName(), status);
     }
 }

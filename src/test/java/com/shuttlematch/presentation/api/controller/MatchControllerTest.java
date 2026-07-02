@@ -44,6 +44,9 @@ class MatchControllerTest {
     @MockitoBean
     private com.shuttlematch.application.usecase.session.AddSetsUseCase addSetsUseCase;
 
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.ReplanFutureSetsUseCase replanFutureSetsUseCase;
+
     private final UUID sessionId = UUID.randomUUID();
 
     private MatchSchedule sampleSchedule() {
@@ -143,6 +146,17 @@ class MatchControllerTest {
                         .contentType("application/json")
                         .content("{\"setCount\": 0}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST replan: 200 で再編成後のスケジュールを返す")
+    void replanReturnsSchedule() throws Exception {
+        when(replanFutureSetsUseCase.execute(any(SessionId.class)))
+                .thenReturn(sampleSchedule());
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/replan", sessionId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matches.length()").value(1));
     }
 
     @Test

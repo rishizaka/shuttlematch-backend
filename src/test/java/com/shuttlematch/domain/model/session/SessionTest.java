@@ -80,13 +80,33 @@ class SessionTest {
     }
 
     @Test
-    @DisplayName("生成済みになると参加者を変更できない")
-    void cannotModifyAfterGenerated() {
+    @DisplayName("生成済みでも参加者を追加できる(途中参加)が、削除はできない(早退を使う)")
+    void allowsAddButNotRemoveAfterGenerated() {
         Session session = newSession(null);
-        session.addGuest("ゲスト");
+        Participant existing = session.addGuest("ゲスト");
         session.markGenerated();
         assertThat(session.status()).isEqualTo(SessionStatus.GENERATED);
-        assertThatThrownBy(() -> session.addGuest("追加"))
+
+        // 途中参加は可能
+        Participant late = session.addGuest("遅参");
+        assertThat(session.participants()).hasSize(2);
+        // 生成後の削除は不可
+        assertThatThrownBy(() -> session.removeParticipant(late.id()))
+                .isInstanceOf(IllegalStateException.class);
+        // 早退マークは可能。履歴は残る(件数は変わらない)。
+        assertThat(session.markParticipantLeft(existing.id())).isTrue();
+        assertThat(session.participants()).hasSize(2);
+        assertThat(session.activeParticipantIds()).containsExactly(late.id());
+    }
+
+    @Test
+    @DisplayName("終了済みセッションには参加者を追加できない")
+    void cannotAddAfterClosed() {
+        Session closed = Session.reconstitute(
+                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
+                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
+                UserId.of(UUID.randomUUID()), List.of());
+        assertThatThrownBy(() -> closed.addGuest("追加"))
                 .isInstanceOf(IllegalStateException.class);
     }
 

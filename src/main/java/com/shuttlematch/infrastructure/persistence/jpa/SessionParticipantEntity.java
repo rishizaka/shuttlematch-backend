@@ -34,6 +34,9 @@ public class SessionParticipantEntity {
     @Column(name = "guest_name")
     private String guestName;
 
+    @Column(name = "status", nullable = false)
+    private String status;
+
     // DB の default now() に任せるため書き込みはしない
     @Column(name = "joined_at", insertable = false, updatable = false)
     private OffsetDateTime joinedAt;

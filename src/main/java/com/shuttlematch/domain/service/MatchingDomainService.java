@@ -85,20 +85,11 @@ public class MatchingDomainService {
 
         List<ParticipantId> pool = validatedPool(participants, courtCount);
 
-        // 既存の出場回数を集計して輪番を継続する(現在の参加者に含まれる分のみ)。
-        Map<ParticipantId, Integer> playCount = new HashMap<>();
-        pool.forEach(p -> playCount.put(p, 0));
-        for (Match m : existing.matches()) {
-            for (ParticipantId p : participantsOf(m)) {
-                playCount.computeIfPresent(p, (key, count) -> count + 1);
-            }
-        }
+        // 既存の出場回数を引き継ぐ。新規参加者は優先させない(既存の最小回数にシード)。
+        Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, existing.matches());
 
         int startSetNumber = existing.setCount() + 1;
-        int startMatchNumber = existing.matches().stream()
-                .mapToInt(m -> m.matchNumber().value())
-                .max()
-                .orElse(0) + 1;
+        int startMatchNumber = maxMatchNumber(existing.matches()) + 1;
 
         List<Match> added =
                 buildSets(pool, playCount, courtCount, additionalSetCount, startSetNumber, startMatchNumber);
@@ -106,6 +97,83 @@ public class MatchingDomainService {
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
         return new MatchSchedule(existing.sessionId(), all);
+    }
+
+    /**
+     * 既存スケジュールの未開始セットを、現在の在席者で作り直す(途中参加・早退への対応)。
+     * <ul>
+     *   <li>開始済みセットは履歴として不変。ここには一切手を加えない。</li>
+     *   <li>未開始セットは破棄し、開始済みの出場実績を引き継いで作り直す。</li>
+     *   <li>新規(途中参加)は優先させない。既存の最小回数にシードして横入りさせる。</li>
+     *   <li>在席者が少なくコートを埋められない場合は、未来のコート数を自動で減らす。</li>
+     * </ul>
+     * 合計セット数は元のスケジュールと同じに保つ。
+     *
+     * @param existing            既存スケジュール
+     * @param activeParticipants  現在の在席者(早退者は含めない)
+     * @param courtCount          セッションの本来のコート数(1以上)
+     */
+    public MatchSchedule replanFuture(
+            MatchSchedule existing, List<ParticipantId> activeParticipants, int courtCount) {
+        Objects.requireNonNull(existing, "existing は必須です");
+        Objects.requireNonNull(activeParticipants, "activeParticipants は必須です");
+        requireCourtCount(courtCount);
+
+        int maxStartedSet = existing.matches().stream()
+                .filter(Match::isStarted)
+                .mapToInt(Match::setNumber)
+                .max()
+                .orElse(0);
+        List<Match> committed = existing.matches().stream()
+                .filter(m -> m.setNumber() <= maxStartedSet)
+                .toList();
+
+        int futureSetCount = existing.setCount() - maxStartedSet;
+        List<ParticipantId> pool = new ArrayList<>(new LinkedHashSet<>(activeParticipants));
+        // 在席人数で埋められるコート数まで自動で縮小する。
+        int effectiveCourtCount = Math.min(courtCount, pool.size() / PLAYERS_PER_MATCH);
+
+        if (futureSetCount <= 0 || effectiveCourtCount < 1) {
+            // 未開始セットが無い、または人数不足で組めない場合は確定分のみ残す。
+            return new MatchSchedule(existing.sessionId(), committed);
+        }
+
+        Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, committed);
+        List<Match> future = buildSets(
+                pool, playCount, effectiveCourtCount, futureSetCount,
+                maxStartedSet + 1, maxMatchNumber(committed) + 1);
+
+        List<Match> all = new ArrayList<>(committed);
+        all.addAll(future);
+        return new MatchSchedule(existing.sessionId(), all);
+    }
+
+    /**
+     * 参照試合から出場回数を集計する。プールに居るが未出場の参加者(途中参加など)は
+     * 「既に出ている人の最小回数」にシードして、優先(キャッチアップ)させない。
+     */
+    private Map<ParticipantId, Integer> seededPlayCounts(
+            List<ParticipantId> pool, List<Match> sourceMatches) {
+        Map<ParticipantId, Integer> appeared = new HashMap<>();
+        for (Match m : sourceMatches) {
+            for (ParticipantId p : participantsOf(m)) {
+                appeared.merge(p, 1, Integer::sum);
+            }
+        }
+        int baseline = pool.stream()
+                .filter(appeared::containsKey)
+                .mapToInt(appeared::get)
+                .min()
+                .orElse(0);
+        Map<ParticipantId, Integer> playCount = new HashMap<>();
+        for (ParticipantId p : pool) {
+            playCount.put(p, appeared.getOrDefault(p, baseline));
+        }
+        return playCount;
+    }
+
+    private int maxMatchNumber(List<Match> matches) {
+        return matches.stream().mapToInt(m -> m.matchNumber().value()).max().orElse(0);
     }
 
     /**

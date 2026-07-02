@@ -5,13 +5,15 @@ import com.shuttlematch.domain.model.session.Participant;
 /**
  * 参加者のレスポンス表現。
  */
-public record ParticipantResponse(String id, String userId, String guestName, boolean guest) {
+public record ParticipantResponse(
+        String id, String userId, String guestName, boolean guest, String status) {
 
     public static ParticipantResponse from(Participant participant) {
         return new ParticipantResponse(
                 participant.id().value().toString(),
                 participant.userId() == null ? null : participant.userId().value().toString(),
                 participant.guestName(),
-                participant.isGuest());
+                participant.isGuest(),
+                participant.status().name());
     }
 }

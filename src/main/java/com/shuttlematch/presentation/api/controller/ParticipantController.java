@@ -2,6 +2,8 @@ package com.shuttlematch.presentation.api.controller;
 
 import com.shuttlematch.application.usecase.session.AddParticipantCommand;
 import com.shuttlematch.application.usecase.session.AddParticipantUseCase;
+import com.shuttlematch.application.usecase.session.MarkParticipantLeftUseCase;
+import com.shuttlematch.application.usecase.session.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.session.RemoveParticipantUseCase;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.Session;
@@ -29,12 +31,18 @@ public class ParticipantController {
 
     private final AddParticipantUseCase addParticipantUseCase;
     private final RemoveParticipantUseCase removeParticipantUseCase;
+    private final MarkParticipantLeftUseCase markParticipantLeftUseCase;
+    private final ReactivateParticipantUseCase reactivateParticipantUseCase;
 
     public ParticipantController(
             AddParticipantUseCase addParticipantUseCase,
-            RemoveParticipantUseCase removeParticipantUseCase) {
+            RemoveParticipantUseCase removeParticipantUseCase,
+            MarkParticipantLeftUseCase markParticipantLeftUseCase,
+            ReactivateParticipantUseCase reactivateParticipantUseCase) {
         this.addParticipantUseCase = addParticipantUseCase;
         this.removeParticipantUseCase = removeParticipantUseCase;
+        this.markParticipantLeftUseCase = markParticipantLeftUseCase;
+        this.reactivateParticipantUseCase = reactivateParticipantUseCase;
     }
 
     /** 参加登録(登録ユーザーまたはゲスト)。 */
@@ -50,10 +58,26 @@ public class ParticipantController {
         return SessionResponse.from(session);
     }
 
-    /** 参加キャンセル。 */
+    /** 参加キャンセル(生成前)。 */
     @DeleteMapping("/{participantId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remove(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
         removeParticipantUseCase.execute(SessionId.of(sessionId), ParticipantId.of(participantId));
+    }
+
+    /** 早退(在席状態を LEFT に)。未開始セットの編成対象から外れる。 */
+    @PostMapping("/{participantId}/leave")
+    public SessionResponse leave(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
+        Session session = markParticipantLeftUseCase.execute(
+                SessionId.of(sessionId), ParticipantId.of(participantId));
+        return SessionResponse.from(session);
+    }
+
+    /** 復帰(在席状態を ACTIVE に戻す)。 */
+    @PostMapping("/{participantId}/reactivate")
+    public SessionResponse reactivate(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
+        Session session = reactivateParticipantUseCase.execute(
+                SessionId.of(sessionId), ParticipantId.of(participantId));
+        return SessionResponse.from(session);
     }
 }
