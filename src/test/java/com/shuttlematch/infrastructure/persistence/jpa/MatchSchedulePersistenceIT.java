@@ -51,7 +51,7 @@ class MatchSchedulePersistenceIT {
     @Autowired
     private SessionRepository sessionRepository;
 
-    /** users → circles → sessions → session_participants を投入し、参加者 ID を返す。 */
+    /** users → sessions → session_participants を投入し、参加者 ID を返す。 */
     private List<ParticipantId> seedSessionWithParticipants(SessionId sessionId, int participantCount) {
         UUID userId = UUID.randomUUID();
         em.createNativeQuery("insert into users(id, name, email) values (?1, ?2, ?3)")
@@ -60,21 +60,12 @@ class MatchSchedulePersistenceIT {
                 .setParameter(3, "tester+" + userId + "@example.com")
                 .executeUpdate();
 
-        UUID circleId = UUID.randomUUID();
-        em.createNativeQuery("insert into circles(id, name, invite_code, created_by) values (?1, ?2, ?3, ?4)")
-                .setParameter(1, circleId)
-                .setParameter(2, "テストサークル")
-                .setParameter(3, "INV-" + UUID.randomUUID().toString().substring(0, 8))
-                .setParameter(4, userId)
-                .executeUpdate();
-
         em.createNativeQuery(
-                        "insert into sessions(id, circle_id, title, held_at, created_by) "
-                                + "values (?1, ?2, ?3, now(), ?4)")
+                        "insert into sessions(id, title, held_at, created_by) "
+                                + "values (?1, ?2, now(), ?3)")
                 .setParameter(1, sessionId.value())
-                .setParameter(2, circleId)
-                .setParameter(3, "テスト練習会")
-                .setParameter(4, userId)
+                .setParameter(2, "テスト練習会")
+                .setParameter(3, userId)
                 .executeUpdate();
 
         return IntStream.range(0, participantCount)

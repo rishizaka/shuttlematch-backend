@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
@@ -41,7 +40,7 @@ class AddSetsUseCaseTest {
 
     private Session openSessionWithGuests(int count) {
         Session session = Session.create(
-                CircleId.of(UUID.randomUUID()), "テスト", OffsetDateTime.now(),
+                "テスト", OffsetDateTime.now(),
                 null, null, UserId.of(UUID.randomUUID()));
         for (int i = 0; i < count; i++) {
             session.addGuest("ゲスト" + i);

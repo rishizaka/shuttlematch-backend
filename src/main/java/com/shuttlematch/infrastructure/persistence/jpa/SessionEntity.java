@@ -25,9 +25,6 @@ public class SessionEntity {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "circle_id", nullable = false)
-    private UUID circleId;
-
     @Column(name = "title", nullable = false)
     private String title;
 
@@ -45,9 +42,6 @@ public class SessionEntity {
 
     @Column(name = "status", nullable = false)
     private String status;
-
-    @Column(name = "visibility", nullable = false)
-    private String visibility;
 
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;

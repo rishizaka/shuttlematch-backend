@@ -3,7 +3,6 @@ package com.shuttlematch.application.usecase.session;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
@@ -38,7 +37,7 @@ class QuickCreateSessionUseCaseTest {
 
     private QuickCreateSessionCommand cmd(int courts, int participants) {
         return new QuickCreateSessionCommand(
-                CircleId.of(UUID.randomUUID()), "7/2 夜練", courts, participants,
+                "7/2 夜練", courts, participants,
                 UserId.of(UUID.randomUUID()));
     }
 

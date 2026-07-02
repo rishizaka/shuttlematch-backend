@@ -36,11 +36,9 @@ public class QuickCreateSessionUseCase {
         }
 
         Session session = Session.create(
-                command.circleId(),
                 command.title(),
                 java.time.OffsetDateTime.now(),
                 null, null, command.courtCount(),
-                null, // visibility: 既定(PUBLIC)
                 command.createdBy());
 
         // 番号(1..N)の参加者を登録する。名前は後から変更できる。

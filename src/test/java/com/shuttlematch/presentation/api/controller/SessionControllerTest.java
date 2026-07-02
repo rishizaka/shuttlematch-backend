@@ -11,7 +11,6 @@ import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.application.usecase.session.CreateSessionCommand;
 import com.shuttlematch.application.usecase.session.CreateSessionUseCase;
 import com.shuttlematch.application.usecase.session.GetSessionUseCase;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
@@ -61,11 +60,9 @@ class SessionControllerTest {
     @MockitoBean
     private com.shuttlematch.application.usecase.session.RenameParticipantUseCase renameParticipantUseCase;
 
-    private final UUID circleId = UUID.randomUUID();
-
     private Session sampleSession() {
         return Session.create(
-                CircleId.of(circleId), "練習会", OffsetDateTime.parse("2026-07-01T18:00:00+09:00"),
+                "練習会", OffsetDateTime.parse("2026-07-01T18:00:00+09:00"),
                 "体育館", 16, UserId.of(UUID.randomUUID()));
     }
 
@@ -84,7 +81,7 @@ class SessionControllerTest {
                 }
                 """.formatted(UUID.randomUUID());
 
-        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions", circleId)
+        mockMvc.perform(post("/api/v1/sessions")
                         .contentType("application/json").content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("練習会"))
@@ -94,7 +91,7 @@ class SessionControllerTest {
     @Test
     @DisplayName("POST create: 必須項目欠落は 400")
     void createValidationFails() throws Exception {
-        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions", circleId)
+        mockMvc.perform(post("/api/v1/sessions")
                         .contentType("application/json").content("{\"location\":\"x\"}"))
                 .andExpect(status().isBadRequest());
     }
@@ -119,7 +116,7 @@ class SessionControllerTest {
                 {"title": "7/2 夜練", "courtCount": 2, "participantCount": 8, "createdBy": "%s"}
                 """.formatted(UUID.randomUUID());
 
-        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions/quick", circleId)
+        mockMvc.perform(post("/api/v1/sessions/quick")
                         .contentType("application/json").content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("練習会"));
@@ -132,7 +129,7 @@ class SessionControllerTest {
                 {"title": "x", "courtCount": 1, "participantCount": 0, "createdBy": "%s"}
                 """.formatted(UUID.randomUUID());
 
-        mockMvc.perform(post("/api/v1/circles/{circleId}/sessions/quick", circleId)
+        mockMvc.perform(post("/api/v1/sessions/quick")
                         .contentType("application/json").content(body))
                 .andExpect(status().isBadRequest());
     }
@@ -141,9 +138,9 @@ class SessionControllerTest {
     @DisplayName("POST close: 200 で終了済みセッションを返す")
     void closeReturnsSession() throws Exception {
         Session closed = Session.reconstitute(
-                SessionId.newId(), CircleId.of(circleId), "練習会",
+                SessionId.newId(), "練習会",
                 OffsetDateTime.parse("2026-07-01T18:00:00+09:00"), null, null, null,
-                SessionStatus.CLOSED, com.shuttlematch.domain.model.session.SessionVisibility.PUBLIC,
+                SessionStatus.CLOSED,
                 UserId.of(UUID.randomUUID()), java.util.List.of());
         when(closeSessionUseCase.execute(any(SessionId.class))).thenReturn(closed);
 

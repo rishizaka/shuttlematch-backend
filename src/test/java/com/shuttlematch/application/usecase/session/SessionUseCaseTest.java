@@ -4,12 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Participant;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
-import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.SessionRepository;
 import java.time.OffsetDateTime;
@@ -41,8 +39,8 @@ class SessionUseCaseTest {
 
     private CreateSessionCommand createCommand() {
         return new CreateSessionCommand(
-                CircleId.of(UUID.randomUUID()), "練習会", OffsetDateTime.now(),
-                "体育館", null, 2, SessionVisibility.PUBLIC, UserId.of(UUID.randomUUID()));
+                "練習会", OffsetDateTime.now(),
+                "体育館", null, 2, UserId.of(UUID.randomUUID()));
     }
 
     @Test

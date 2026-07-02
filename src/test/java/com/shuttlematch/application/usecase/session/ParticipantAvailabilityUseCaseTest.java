@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.ParticipantStatus;
 import com.shuttlematch.domain.model.session.Session;
@@ -37,7 +36,7 @@ class ParticipantAvailabilityUseCaseTest {
 
     private Session sessionWithGuest() {
         Session session = Session.create(
-                CircleId.of(UUID.randomUUID()), "テスト", OffsetDateTime.now(),
+                "テスト", OffsetDateTime.now(),
                 null, null, UserId.of(UUID.randomUUID()));
         session.addGuest("ゲスト");
         sessionRepository.save(session);

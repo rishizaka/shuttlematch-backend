@@ -3,7 +3,6 @@ package com.shuttlematch.domain.model.session;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.user.UserId;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -15,7 +14,7 @@ class SessionTest {
 
     private Session newSession(Integer capacity) {
         return Session.create(
-                CircleId.of(UUID.randomUUID()), "練習会", OffsetDateTime.now(),
+                "練習会", OffsetDateTime.now(),
                 "体育館", capacity, UserId.of(UUID.randomUUID()));
     }
 
@@ -31,7 +30,7 @@ class SessionTest {
     @DisplayName("タイトル未入力は作成できない")
     void cannotCreateWithoutTitle() {
         assertThatThrownBy(() -> Session.create(
-                CircleId.of(UUID.randomUUID()), "  ", OffsetDateTime.now(),
+                "  ", OffsetDateTime.now(),
                 null, null, UserId.of(UUID.randomUUID())))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -112,9 +111,8 @@ class SessionTest {
     @DisplayName("終了済みセッションには参加者を追加できない")
     void cannotAddAfterClosed() {
         Session closed = Session.reconstitute(
-                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
-                UserId.of(UUID.randomUUID()), List.of());
+                SessionId.newId(), "終了", OffsetDateTime.now(),
+                null, null, null, SessionStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         assertThatThrownBy(() -> closed.addGuest("追加"))
                 .isInstanceOf(IllegalStateException.class);
     }
@@ -123,9 +121,8 @@ class SessionTest {
     @DisplayName("終了済みセッションは生成済みに遷移できない")
     void closedCannotBeGenerated() {
         Session closed = Session.reconstitute(
-                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
-                UserId.of(UUID.randomUUID()), List.of());
+                SessionId.newId(), "終了", OffsetDateTime.now(),
+                null, null, null, SessionStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         assertThatThrownBy(closed::markGenerated)
                 .isInstanceOf(IllegalStateException.class);
     }

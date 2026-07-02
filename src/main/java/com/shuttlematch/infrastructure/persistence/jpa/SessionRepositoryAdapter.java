@@ -1,13 +1,11 @@
 package com.shuttlematch.infrastructure.persistence.jpa;
 
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Participant;
 import com.shuttlematch.domain.model.session.ParticipantId;
 import com.shuttlematch.domain.model.session.ParticipantStatus;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
-import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.SessionRepository;
 
@@ -43,14 +41,12 @@ public class SessionRepositoryAdapter implements SessionRepository {
         SessionEntity entity = sessionJpaRepository.findById(session.id().value())
                 .orElseGet(SessionEntity::new);
         entity.setId(session.id().value());
-        entity.setCircleId(session.circleId().value());
         entity.setTitle(session.title());
         entity.setHeldAt(session.heldAt());
         entity.setLocation(session.location());
         entity.setCapacity(session.capacity());
         entity.setCourtCount(session.courtCount());
         entity.setStatus(session.status().name());
-        entity.setVisibility(session.visibility().name());
         entity.setCreatedBy(session.createdBy().value());
         sessionJpaRepository.save(entity);
 
@@ -127,14 +123,12 @@ public class SessionRepositoryAdapter implements SessionRepository {
                 .toList();
         return Session.reconstitute(
                 SessionId.of(entity.getId()),
-                CircleId.of(entity.getCircleId()),
                 entity.getTitle(),
                 entity.getHeldAt(),
                 entity.getLocation(),
                 entity.getCapacity(),
                 entity.getCourtCount(),
                 SessionStatus.valueOf(entity.getStatus()),
-                SessionVisibility.valueOf(entity.getVisibility()),
                 UserId.of(entity.getCreatedBy()),
                 participants);
     }

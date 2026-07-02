@@ -1,6 +1,5 @@
 package com.shuttlematch.domain.model.session;
 
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.user.UserId;
 
 import java.time.OffsetDateTime;
@@ -9,7 +8,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * セッション(集約ルート)。1回の活動日。参加者を保持する。
+ * ルーム(集約ルート)。1回の活動日。参加者を保持する。作成者(createdBy)がオーナー。
  */
 public class Session {
 
@@ -17,48 +16,41 @@ public class Session {
     private static final int MIN_PARTICIPANTS = 4;
 
     private final SessionId id;
-    private final CircleId circleId;
     private String title;
     private OffsetDateTime heldAt;
     private String location;
     private Integer capacity;
     private Integer courtCount;
     private SessionStatus status;
-    private SessionVisibility visibility;
     private final UserId createdBy;
     private final List<Participant> participants;
 
     private Session(
-            SessionId id, CircleId circleId, String title, OffsetDateTime heldAt,
+            SessionId id, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, SessionStatus status,
-            SessionVisibility visibility, UserId createdBy, List<Participant> participants) {
+            UserId createdBy, List<Participant> participants) {
         this.id = id;
-        this.circleId = circleId;
         this.title = title;
         this.heldAt = heldAt;
         this.location = location;
         this.capacity = capacity;
         this.courtCount = courtCount;
         this.status = status;
-        this.visibility = visibility;
         this.createdBy = createdBy;
         this.participants = participants;
     }
 
-    /** 新規セッションを作成する(受付中・公開で開始)。 */
+    /** 新規作成(受付中で開始)。コート数は任意。 */
     public static Session create(
-            CircleId circleId, String title, OffsetDateTime heldAt,
+            String title, OffsetDateTime heldAt,
             String location, Integer capacity, UserId createdBy) {
-        return create(circleId, title, heldAt, location, capacity, null,
-                SessionVisibility.PUBLIC, createdBy);
+        return create(title, heldAt, location, capacity, null, createdBy);
     }
 
-    /** 新規セッションを作成する(受付中で開始)。コート数・公開範囲を指定する。 */
+    /** 新規作成(受付中で開始)。コート数を指定する。 */
     public static Session create(
-            CircleId circleId, String title, OffsetDateTime heldAt,
-            String location, Integer capacity, Integer courtCount,
-            SessionVisibility visibility, UserId createdBy) {
-        Objects.requireNonNull(circleId, "circleId は必須です");
+            String title, OffsetDateTime heldAt,
+            String location, Integer capacity, Integer courtCount, UserId createdBy) {
         Objects.requireNonNull(createdBy, "createdBy は必須です");
         Objects.requireNonNull(heldAt, "heldAt は必須です");
         if (title == null || title.isBlank()) {
@@ -70,19 +62,17 @@ public class Session {
         if (courtCount != null && courtCount < 1) {
             throw new IllegalArgumentException("コート数は1以上にしてください");
         }
-        SessionVisibility resolved = visibility == null ? SessionVisibility.PUBLIC : visibility;
-        return new Session(SessionId.newId(), circleId, title, heldAt, location, capacity, courtCount,
-                SessionStatus.OPEN, resolved, createdBy, new ArrayList<>());
+        return new Session(SessionId.newId(), title, heldAt, location, capacity, courtCount,
+                SessionStatus.OPEN, createdBy, new ArrayList<>());
     }
 
     /** 永続化層からの復元用。 */
     public static Session reconstitute(
-            SessionId id, CircleId circleId, String title, OffsetDateTime heldAt,
+            SessionId id, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, SessionStatus status,
-            SessionVisibility visibility, UserId createdBy, List<Participant> participants) {
-        return new Session(id, circleId, title, heldAt, location, capacity, courtCount, status,
-                visibility == null ? SessionVisibility.PUBLIC : visibility, createdBy,
-                new ArrayList<>(participants));
+            UserId createdBy, List<Participant> participants) {
+        return new Session(id, title, heldAt, location, capacity, courtCount, status,
+                createdBy, new ArrayList<>(participants));
     }
 
     /** 登録ユーザーを参加させる。重複参加は不可。生成後(途中参加)も可能。 */
@@ -210,10 +200,6 @@ public class Session {
         return id;
     }
 
-    public CircleId circleId() {
-        return circleId;
-    }
-
     public String title() {
         return title;
     }
@@ -236,10 +222,6 @@ public class Session {
 
     public SessionStatus status() {
         return status;
-    }
-
-    public SessionVisibility visibility() {
-        return visibility;
     }
 
     public UserId createdBy() {

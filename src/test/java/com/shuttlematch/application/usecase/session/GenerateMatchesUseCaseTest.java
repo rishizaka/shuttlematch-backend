@@ -4,12 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
-import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.SessionRepository;
@@ -42,7 +40,7 @@ class GenerateMatchesUseCaseTest {
 
     private Session openSessionWithGuests(int count) {
         Session session = Session.create(
-                CircleId.of(UUID.randomUUID()), "テスト", OffsetDateTime.now(),
+                "テスト", OffsetDateTime.now(),
                 null, null, UserId.of(UUID.randomUUID()));
         for (int i = 0; i < count; i++) {
             session.addGuest("ゲスト" + i);
@@ -108,9 +106,8 @@ class GenerateMatchesUseCaseTest {
     @DisplayName("終了済みセッションでは生成できない(IllegalStateException)")
     void throwsWhenSessionClosed() {
         Session closed = Session.reconstitute(
-                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
-                UserId.of(UUID.randomUUID()), List.of());
+                SessionId.newId(), "終了", OffsetDateTime.now(),
+                null, null, null, SessionStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         sessionRepository.save(closed);
 
         assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(closed.id())))

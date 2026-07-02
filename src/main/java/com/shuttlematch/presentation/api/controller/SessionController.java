@@ -7,7 +7,6 @@ import com.shuttlematch.application.usecase.session.GetSessionUseCase;
 import com.shuttlematch.application.usecase.session.ListSessionsUseCase;
 import com.shuttlematch.application.usecase.session.QuickCreateSessionCommand;
 import com.shuttlematch.application.usecase.session.QuickCreateSessionUseCase;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
@@ -53,32 +52,25 @@ public class SessionController {
         this.quickCreateSessionUseCase = quickCreateSessionUseCase;
     }
 
-    @PostMapping("/api/v1/circles/{circleId}/sessions")
+    @PostMapping("/api/v1/sessions")
     @ResponseStatus(HttpStatus.CREATED)
-    public SessionResponse create(
-            @PathVariable UUID circleId,
-            @Valid @RequestBody CreateSessionRequest request) {
+    public SessionResponse create(@Valid @RequestBody CreateSessionRequest request) {
         CreateSessionCommand command = new CreateSessionCommand(
-                CircleId.of(circleId),
                 request.title(),
                 request.heldAt(),
                 request.location(),
                 request.capacity(),
                 request.courtCount(),
-                request.visibilityOrDefault(),
                 UserId.of(request.createdBy()));
         Session session = createSessionUseCase.execute(command);
         return SessionResponse.from(session);
     }
 
     /** かんたん作成: 参加人数・コート数・タイトルのみで、番号参加者の登録と試合表生成まで行う。 */
-    @PostMapping("/api/v1/circles/{circleId}/sessions/quick")
+    @PostMapping("/api/v1/sessions/quick")
     @ResponseStatus(HttpStatus.CREATED)
-    public SessionResponse quickCreate(
-            @PathVariable UUID circleId,
-            @Valid @RequestBody QuickCreateSessionRequest request) {
+    public SessionResponse quickCreate(@Valid @RequestBody QuickCreateSessionRequest request) {
         QuickCreateSessionCommand command = new QuickCreateSessionCommand(
-                CircleId.of(circleId),
                 request.title(),
                 request.courtCount(),
                 request.participantCount(),
@@ -87,8 +79,7 @@ public class SessionController {
     }
 
     /**
-     * セッション一覧を取得する。status 省略時は募集中(OPEN)を返す。
-     * トップページで公開する募集中セッション一覧に用いる。
+     * ルーム一覧を取得する。status 省略時は募集中(OPEN)を返す。
      */
     @GetMapping("/api/v1/sessions")
     public List<SessionResponse> list(

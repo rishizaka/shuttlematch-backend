@@ -21,13 +21,11 @@ public class CreateSessionUseCase {
     @Transactional
     public Session execute(CreateSessionCommand command) {
         Session session = Session.create(
-                command.circleId(),
                 command.title(),
                 command.heldAt(),
                 command.location(),
                 command.capacity(),
                 command.courtCount(),
-                command.visibility(),
                 command.createdBy());
         return sessionRepository.save(session);
     }

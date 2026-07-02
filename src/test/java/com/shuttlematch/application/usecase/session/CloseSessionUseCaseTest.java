@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
@@ -33,7 +32,7 @@ class CloseSessionUseCaseTest {
     @DisplayName("セッションを終了済みにして返す")
     void closesSession() {
         Session session = Session.create(
-                CircleId.of(UUID.randomUUID()), "テスト", OffsetDateTime.now(),
+                "テスト", OffsetDateTime.now(),
                 null, null, UserId.of(UUID.randomUUID()));
         sessionRepository.save(session);
 
