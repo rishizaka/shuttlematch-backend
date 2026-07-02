@@ -147,6 +147,14 @@ public class Session {
         this.status = SessionStatus.GENERATED;
     }
 
+    /** セッションを終了する(履歴として残す)。既に終了済みなら例外。 */
+    public void close() {
+        if (status == SessionStatus.CLOSED) {
+            throw new IllegalStateException("このセッションは既に終了しています");
+        }
+        this.status = SessionStatus.CLOSED;
+    }
+
     private void ensureCanModifyParticipants() {
         if (!status.allowsParticipantChanges()) {
             throw new IllegalStateException("このセッションは参加者を変更できる状態ではありません: " + status);

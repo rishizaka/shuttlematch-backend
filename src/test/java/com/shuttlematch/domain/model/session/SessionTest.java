@@ -100,6 +100,15 @@ class SessionTest {
     }
 
     @Test
+    @DisplayName("close で終了済みに遷移する。二重終了は例外")
+    void closesSession() {
+        Session session = newSession(null);
+        session.close();
+        assertThat(session.status()).isEqualTo(SessionStatus.CLOSED);
+        assertThatThrownBy(session::close).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     @DisplayName("終了済みセッションには参加者を追加できない")
     void cannotAddAfterClosed() {
         Session closed = Session.reconstitute(

@@ -13,6 +13,8 @@ import com.shuttlematch.application.usecase.session.CreateSessionUseCase;
 import com.shuttlematch.application.usecase.session.GetSessionUseCase;
 import com.shuttlematch.domain.model.circle.CircleId;
 import com.shuttlematch.domain.model.session.Session;
+import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.session.SessionStatus;
 import com.shuttlematch.domain.model.user.UserId;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -49,6 +51,9 @@ class SessionControllerTest {
 
     @MockitoBean
     private com.shuttlematch.application.usecase.session.ReactivateParticipantUseCase reactivateParticipantUseCase;
+
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.CloseSessionUseCase closeSessionUseCase;
 
     private final UUID circleId = UUID.randomUUID();
 
@@ -95,5 +100,20 @@ class SessionControllerTest {
 
         mockMvc.perform(get("/api/v1/sessions/{sessionId}", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("POST close: 200 で終了済みセッションを返す")
+    void closeReturnsSession() throws Exception {
+        Session closed = Session.reconstitute(
+                SessionId.newId(), CircleId.of(circleId), "練習会",
+                OffsetDateTime.parse("2026-07-01T18:00:00+09:00"), null, null, null,
+                SessionStatus.CLOSED, com.shuttlematch.domain.model.session.SessionVisibility.PUBLIC,
+                UserId.of(UUID.randomUUID()), java.util.List.of());
+        when(closeSessionUseCase.execute(any(SessionId.class))).thenReturn(closed);
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/close", UUID.randomUUID()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"));
     }
 }

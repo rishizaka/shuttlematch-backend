@@ -1,5 +1,6 @@
 package com.shuttlematch.presentation.api.controller;
 
+import com.shuttlematch.application.usecase.session.CloseSessionUseCase;
 import com.shuttlematch.application.usecase.session.CreateSessionCommand;
 import com.shuttlematch.application.usecase.session.CreateSessionUseCase;
 import com.shuttlematch.application.usecase.session.GetSessionUseCase;
@@ -33,14 +34,17 @@ public class SessionController {
     private final CreateSessionUseCase createSessionUseCase;
     private final GetSessionUseCase getSessionUseCase;
     private final ListSessionsUseCase listSessionsUseCase;
+    private final CloseSessionUseCase closeSessionUseCase;
 
     public SessionController(
             CreateSessionUseCase createSessionUseCase,
             GetSessionUseCase getSessionUseCase,
-            ListSessionsUseCase listSessionsUseCase) {
+            ListSessionsUseCase listSessionsUseCase,
+            CloseSessionUseCase closeSessionUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.getSessionUseCase = getSessionUseCase;
         this.listSessionsUseCase = listSessionsUseCase;
+        this.closeSessionUseCase = closeSessionUseCase;
     }
 
     @PostMapping("/api/v1/circles/{circleId}/sessions")
@@ -76,5 +80,11 @@ public class SessionController {
     @GetMapping("/api/v1/sessions/{sessionId}")
     public SessionResponse get(@PathVariable UUID sessionId) {
         return SessionResponse.from(getSessionUseCase.execute(SessionId.of(sessionId)));
+    }
+
+    /** セッションを終了する(終了済みとして履歴に残す)。 */
+    @PostMapping("/api/v1/sessions/{sessionId}/close")
+    public SessionResponse close(@PathVariable UUID sessionId) {
+        return SessionResponse.from(closeSessionUseCase.execute(SessionId.of(sessionId)));
     }
 }
