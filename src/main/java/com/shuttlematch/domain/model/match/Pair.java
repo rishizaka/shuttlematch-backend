@@ -1,6 +1,6 @@
 package com.shuttlematch.domain.model.match;
 
-import com.shuttlematch.domain.model.session.ParticipantId;
+import com.shuttlematch.domain.model.room.ParticipantId;
 
 import java.util.Objects;
 

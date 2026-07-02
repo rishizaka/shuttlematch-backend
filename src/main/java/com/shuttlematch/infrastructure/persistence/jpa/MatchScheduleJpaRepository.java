@@ -11,11 +11,11 @@ import org.springframework.data.repository.query.Param;
 public interface MatchScheduleJpaRepository extends JpaRepository<MatchScheduleEntity, UUID> {
 
     @EntityGraph(attributePaths = "matches")
-    Optional<MatchScheduleEntity> findBySessionId(UUID sessionId);
+    Optional<MatchScheduleEntity> findByRoomId(UUID roomId);
 
     // DB の ON DELETE CASCADE により matches も削除される。
     // 一括削除なので後続の insert より先に DB へ反映される。
     @Modifying
-    @Query("delete from MatchScheduleEntity e where e.sessionId = :sessionId")
-    void deleteBySessionId(@Param("sessionId") UUID sessionId);
+    @Query("delete from MatchScheduleEntity e where e.roomId = :roomId")
+    void deleteByRoomId(@Param("roomId") UUID roomId);
 }

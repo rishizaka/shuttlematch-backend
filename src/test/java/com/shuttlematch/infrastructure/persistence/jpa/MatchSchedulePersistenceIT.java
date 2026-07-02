@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.shuttlematch.TestcontainersConfiguration;
 import com.shuttlematch.domain.model.match.MatchSchedule;
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
-import com.shuttlematch.domain.repository.SessionRepository;
+import com.shuttlematch.domain.repository.RoomRepository;
 import com.shuttlematch.domain.service.MatchingDomainService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -49,10 +49,10 @@ class MatchSchedulePersistenceIT {
     private MatchScheduleRepository matchScheduleRepository;
 
     @Autowired
-    private SessionRepository sessionRepository;
+    private RoomRepository roomRepository;
 
-    /** users → sessions → session_participants を投入し、参加者 ID を返す。 */
-    private List<ParticipantId> seedSessionWithParticipants(SessionId sessionId, int participantCount) {
+    /** users → rooms → room_participants を投入し、参加者 ID を返す。 */
+    private List<ParticipantId> seedSessionWithParticipants(RoomId roomId, int participantCount) {
         UUID userId = UUID.randomUUID();
         em.createNativeQuery("insert into users(id, name, email) values (?1, ?2, ?3)")
                 .setParameter(1, userId)
@@ -61,9 +61,9 @@ class MatchSchedulePersistenceIT {
                 .executeUpdate();
 
         em.createNativeQuery(
-                        "insert into sessions(id, title, held_at, created_by) "
+                        "insert into rooms(id, title, held_at, created_by) "
                                 + "values (?1, ?2, now(), ?3)")
-                .setParameter(1, sessionId.value())
+                .setParameter(1, roomId.value())
                 .setParameter(2, "テスト練習会")
                 .setParameter(3, userId)
                 .executeUpdate();
@@ -72,10 +72,10 @@ class MatchSchedulePersistenceIT {
                 .mapToObj(i -> {
                     UUID participantId = UUID.randomUUID();
                     em.createNativeQuery(
-                                    "insert into session_participants(id, session_id, guest_name) "
+                                    "insert into room_participants(id, room_id, guest_name) "
                                             + "values (?1, ?2, ?3)")
                             .setParameter(1, participantId)
-                            .setParameter(2, sessionId.value())
+                            .setParameter(2, roomId.value())
                             .setParameter(3, "ゲスト" + (i + 1))
                             .executeUpdate();
                     return ParticipantId.of(participantId);
@@ -86,12 +86,12 @@ class MatchSchedulePersistenceIT {
     @Test
     @DisplayName("セッションを参加者ごと復元できる")
     void loadsSessionWithParticipants() {
-        SessionId sessionId = SessionId.newId();
-        List<ParticipantId> seeded = seedSessionWithParticipants(sessionId, 6);
+        RoomId roomId = RoomId.newId();
+        List<ParticipantId> seeded = seedSessionWithParticipants(roomId, 6);
         em.flush();
         em.clear();
 
-        List<ParticipantId> found = sessionRepository.findById(sessionId).orElseThrow().participantIds();
+        List<ParticipantId> found = roomRepository.findById(roomId).orElseThrow().participantIds();
 
         assertThat(found).containsExactlyInAnyOrderElementsOf(seeded);
     }
@@ -99,18 +99,18 @@ class MatchSchedulePersistenceIT {
     @Test
     @DisplayName("生成したスケジュールを保存し、取得して同じ内容に復元できる")
     void savesAndRestoresSchedule() {
-        SessionId sessionId = SessionId.newId();
-        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 6);
+        RoomId roomId = RoomId.newId();
+        List<ParticipantId> participants = seedSessionWithParticipants(roomId, 6);
         em.flush();
 
         MatchSchedule generated = new MatchingDomainService(new Random(1L))
-                .generate(sessionId, participants, 1, 10);
+                .generate(roomId, participants, 1, 10);
 
         matchScheduleRepository.save(generated);
         em.flush();
         em.clear(); // 一次キャッシュを破棄して DB から読み直す
 
-        MatchSchedule restored = matchScheduleRepository.findBySessionId(sessionId).orElseThrow();
+        MatchSchedule restored = matchScheduleRepository.findByRoomId(roomId).orElseThrow();
         assertThat(restored.size()).isEqualTo(10);
         assertThat(restored.matches()).isEqualTo(generated.matches());
     }
@@ -118,22 +118,22 @@ class MatchSchedulePersistenceIT {
     @Test
     @DisplayName("セット開始で、そのセットの全コートに started_at が記録される")
     void startSetRecordsStartedAtForAllCourts() {
-        SessionId sessionId = SessionId.newId();
+        RoomId roomId = RoomId.newId();
         // 2コート分(8名)。第1セット=試合1,2 / 第2セット=試合3,4 ...
-        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 8);
+        List<ParticipantId> participants = seedSessionWithParticipants(roomId, 8);
         em.flush();
 
         matchScheduleRepository.save(
-                new MatchingDomainService(new Random(3L)).generate(sessionId, participants, 2, 5));
+                new MatchingDomainService(new Random(3L)).generate(roomId, participants, 2, 5));
         em.flush();
         em.clear();
 
         java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
-        matchScheduleRepository.startSet(sessionId, 2, now);
+        matchScheduleRepository.startSet(roomId, 2, now);
         em.flush();
         em.clear();
 
-        MatchSchedule restored = matchScheduleRepository.findBySessionId(sessionId).orElseThrow();
+        MatchSchedule restored = matchScheduleRepository.findByRoomId(roomId).orElseThrow();
         // 第2セットの全試合(全コート)が開始済み
         assertThat(restored.matches().stream().filter(m -> m.setNumber() == 2))
                 .isNotEmpty()
@@ -146,25 +146,25 @@ class MatchSchedulePersistenceIT {
     @Test
     @DisplayName("既存スケジュールを削除でき、再生成しても1件だけ残る")
     void deletesAndRegeneratesSchedule() {
-        SessionId sessionId = SessionId.newId();
-        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 8);
+        RoomId roomId = RoomId.newId();
+        List<ParticipantId> participants = seedSessionWithParticipants(roomId, 8);
         em.flush();
 
         MatchingDomainService service = new MatchingDomainService(new Random(2L));
-        matchScheduleRepository.save(service.generate(sessionId, participants, 1, 15));
+        matchScheduleRepository.save(service.generate(roomId, participants, 1, 15));
         em.flush();
 
-        matchScheduleRepository.deleteBySessionId(sessionId);
+        matchScheduleRepository.deleteByRoomId(roomId);
         em.flush();
-        assertThat(matchScheduleRepository.findBySessionId(sessionId)).isEmpty();
+        assertThat(matchScheduleRepository.findByRoomId(roomId)).isEmpty();
 
-        matchScheduleRepository.save(service.generate(sessionId, participants, 1, 15));
+        matchScheduleRepository.save(service.generate(roomId, participants, 1, 15));
         em.flush();
         em.clear();
 
         Long scheduleCount = ((Number) em.createNativeQuery(
-                        "select count(*) from match_schedules where session_id = ?1")
-                .setParameter(1, sessionId.value())
+                        "select count(*) from match_schedules where room_id = ?1")
+                .setParameter(1, roomId.value())
                 .getSingleResult()).longValue();
         assertThat(scheduleCount).isEqualTo(1L);
     }

@@ -30,8 +30,8 @@ public class MatchScheduleEntity {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "session_id", nullable = false)
-    private UUID sessionId;
+    @Column(name = "room_id", nullable = false)
+    private UUID roomId;
 
     // DB の default now() に任せる
     @Column(name = "generated_at", insertable = false, updatable = false)

@@ -4,8 +4,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
-import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
+import com.shuttlematch.application.usecase.room.GenerateMatchesUseCase;
+import com.shuttlematch.application.usecase.room.GetMatchScheduleUseCase;
 import com.shuttlematch.presentation.api.controller.MatchController;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -30,18 +30,18 @@ class CorsConfigTest {
     @MockitoBean
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.StartSetUseCase startSetUseCase;
+    private com.shuttlematch.application.usecase.room.StartSetUseCase startSetUseCase;
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.AddSetsUseCase addSetsUseCase;
+    private com.shuttlematch.application.usecase.room.AddSetsUseCase addSetsUseCase;
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.ReplanFutureSetsUseCase replanFutureSetsUseCase;
+    private com.shuttlematch.application.usecase.room.ReplanFutureSetsUseCase replanFutureSetsUseCase;
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.RevertSetUseCase revertSetUseCase;
+    private com.shuttlematch.application.usecase.room.RevertSetUseCase revertSetUseCase;
 
     @Test
     @DisplayName("許可オリジンからのプリフライトは Access-Control-Allow-Origin を返す")
     void allowsConfiguredOrigin() throws Exception {
-        mockMvc.perform(options("/api/v1/sessions/{id}/matches", UUID.randomUUID())
+        mockMvc.perform(options("/api/v1/rooms/{id}/matches", UUID.randomUUID())
                         .header("Origin", "http://localhost:5173")
                         .header("Access-Control-Request-Method", "GET"))
                 .andExpect(status().isOk())
@@ -51,7 +51,7 @@ class CorsConfigTest {
     @Test
     @DisplayName("未許可オリジンからのプリフライトは拒否される")
     void rejectsUnknownOrigin() throws Exception {
-        mockMvc.perform(options("/api/v1/sessions/{id}/matches", UUID.randomUUID())
+        mockMvc.perform(options("/api/v1/rooms/{id}/matches", UUID.randomUUID())
                         .header("Origin", "http://evil.example.com")
                         .header("Access-Control-Request-Method", "GET"))
                 .andExpect(status().isForbidden());

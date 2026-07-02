@@ -1,7 +1,7 @@
 package com.shuttlematch.domain.model.match;
 
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.RoomId;
 
 import java.util.List;
 import java.util.Objects;
@@ -9,10 +9,10 @@ import java.util.Objects;
 /**
  * 試合スケジュール(集約ルート)。1セッションの全試合を保持する。
  */
-public record MatchSchedule(SessionId sessionId, List<Match> matches) {
+public record MatchSchedule(RoomId roomId, List<Match> matches) {
 
     public MatchSchedule {
-        Objects.requireNonNull(sessionId, "sessionId は null にできません");
+        Objects.requireNonNull(roomId, "roomId は null にできません");
         Objects.requireNonNull(matches, "matches は null にできません");
         matches = List.copyOf(matches); // 防御的コピー + 不変化
     }

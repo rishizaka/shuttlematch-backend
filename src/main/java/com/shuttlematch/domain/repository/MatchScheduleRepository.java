@@ -1,7 +1,7 @@
 package com.shuttlematch.domain.repository;
 
 import com.shuttlematch.domain.model.match.MatchSchedule;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.RoomId;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -14,14 +14,14 @@ public interface MatchScheduleRepository {
 
     MatchSchedule save(MatchSchedule schedule);
 
-    Optional<MatchSchedule> findBySessionId(SessionId sessionId);
+    Optional<MatchSchedule> findByRoomId(RoomId roomId);
 
     /** 再生成のため既存スケジュールを削除する。 */
-    void deleteBySessionId(SessionId sessionId);
+    void deleteByRoomId(RoomId roomId);
 
     /**
      * 指定セット(全コートの試合)の開始時刻を記録し、更新後のスケジュールを返す。
      * スケジュールや該当セット番号が無ければ空を返す。
      */
-    Optional<MatchSchedule> startSet(SessionId sessionId, int setNumber, OffsetDateTime startedAt);
+    Optional<MatchSchedule> startSet(RoomId roomId, int setNumber, OffsetDateTime startedAt);
 }

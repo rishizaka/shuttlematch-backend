@@ -4,8 +4,8 @@ import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchNumber;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.match.Pair;
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.RoomId;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -52,8 +52,8 @@ public class MatchingDomainService {
      * @param setCount   セット数(1以上)
      */
     public MatchSchedule generate(
-            SessionId sessionId, List<ParticipantId> participants, int courtCount, int setCount) {
-        Objects.requireNonNull(sessionId, "sessionId は必須です");
+            RoomId roomId, List<ParticipantId> participants, int courtCount, int setCount) {
+        Objects.requireNonNull(roomId, "roomId は必須です");
         requireCourtCount(courtCount);
         if (setCount < 1) {
             throw new IllegalArgumentException("セット数は1以上である必要があります: " + setCount);
@@ -64,7 +64,7 @@ public class MatchingDomainService {
         pool.forEach(p -> playCount.put(p, 0));
 
         List<Match> matches = buildSets(pool, playCount, courtCount, setCount, 1, 1);
-        return new MatchSchedule(sessionId, matches);
+        return new MatchSchedule(roomId, matches);
     }
 
     /**
@@ -96,7 +96,7 @@ public class MatchingDomainService {
 
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
-        return new MatchSchedule(existing.sessionId(), all);
+        return new MatchSchedule(existing.roomId(), all);
     }
 
     /**
@@ -135,7 +135,7 @@ public class MatchingDomainService {
 
         if (futureSetCount <= 0 || effectiveCourtCount < 1) {
             // 未開始セットが無い、または人数不足で組めない場合は確定分のみ残す。
-            return new MatchSchedule(existing.sessionId(), committed);
+            return new MatchSchedule(existing.roomId(), committed);
         }
 
         Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, committed);
@@ -145,7 +145,7 @@ public class MatchingDomainService {
 
         List<Match> all = new ArrayList<>(committed);
         all.addAll(future);
-        return new MatchSchedule(existing.sessionId(), all);
+        return new MatchSchedule(existing.roomId(), all);
     }
 
     /**

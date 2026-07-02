@@ -4,8 +4,8 @@ import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchNumber;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.match.Pair;
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 
 import java.time.OffsetDateTime;
@@ -33,18 +33,18 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
     }
 
     @Override
-    public Optional<MatchSchedule> findBySessionId(SessionId sessionId) {
-        return jpaRepository.findBySessionId(sessionId.value()).map(this::toDomain);
+    public Optional<MatchSchedule> findByRoomId(RoomId roomId) {
+        return jpaRepository.findByRoomId(roomId.value()).map(this::toDomain);
     }
 
     @Override
-    public void deleteBySessionId(SessionId sessionId) {
-        jpaRepository.deleteBySessionId(sessionId.value());
+    public void deleteByRoomId(RoomId roomId) {
+        jpaRepository.deleteByRoomId(roomId.value());
     }
 
     @Override
-    public Optional<MatchSchedule> startSet(SessionId sessionId, int setNumber, OffsetDateTime startedAt) {
-        return jpaRepository.findBySessionId(sessionId.value())
+    public Optional<MatchSchedule> startSet(RoomId roomId, int setNumber, OffsetDateTime startedAt) {
+        return jpaRepository.findByRoomId(roomId.value())
                 .flatMap(schedule -> {
                     List<MatchEntity> targets = schedule.getMatches().stream()
                             .filter(m -> m.getSetNumber() == setNumber)
@@ -62,7 +62,7 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
     private MatchScheduleEntity toEntity(MatchSchedule schedule) {
         MatchScheduleEntity entity = new MatchScheduleEntity();
         entity.setId(UUID.randomUUID());
-        entity.setSessionId(schedule.sessionId().value());
+        entity.setRoomId(schedule.roomId().value());
         for (Match match : schedule.matches()) {
             entity.addMatch(toEntity(match));
         }
@@ -87,7 +87,7 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
         List<Match> matches = entity.getMatches().stream()
                 .map(this::toDomain)
                 .toList();
-        return new MatchSchedule(SessionId.of(entity.getSessionId()), matches);
+        return new MatchSchedule(RoomId.of(entity.getRoomId()), matches);
     }
 
     private Match toDomain(MatchEntity entity) {

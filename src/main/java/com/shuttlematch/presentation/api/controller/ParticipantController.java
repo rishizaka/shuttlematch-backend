@@ -1,18 +1,18 @@
 package com.shuttlematch.presentation.api.controller;
 
-import com.shuttlematch.application.usecase.session.AddParticipantCommand;
-import com.shuttlematch.application.usecase.session.AddParticipantUseCase;
-import com.shuttlematch.application.usecase.session.MarkParticipantLeftUseCase;
-import com.shuttlematch.application.usecase.session.ReactivateParticipantUseCase;
-import com.shuttlematch.application.usecase.session.RemoveParticipantUseCase;
-import com.shuttlematch.application.usecase.session.RenameParticipantUseCase;
+import com.shuttlematch.application.usecase.room.AddParticipantCommand;
+import com.shuttlematch.application.usecase.room.AddParticipantUseCase;
+import com.shuttlematch.application.usecase.room.MarkParticipantLeftUseCase;
+import com.shuttlematch.application.usecase.room.ReactivateParticipantUseCase;
+import com.shuttlematch.application.usecase.room.RemoveParticipantUseCase;
+import com.shuttlematch.application.usecase.room.RenameParticipantUseCase;
 import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.Session;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.Room;
+import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.presentation.api.request.AddParticipantRequest;
-import com.shuttlematch.presentation.api.response.SessionResponse;
+import com.shuttlematch.presentation.api.response.RoomResponse;
 
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  * セッション参加者の追加・削除を行う REST コントローラ。
  */
 @RestController
-@RequestMapping("/api/v1/sessions/{sessionId}/participants")
+@RequestMapping("/api/v1/rooms/{roomId}/participants")
 public class ParticipantController {
 
     private final AddParticipantUseCase addParticipantUseCase;
@@ -54,47 +54,47 @@ public class ParticipantController {
     /** 参加登録(登録ユーザーまたはゲスト)。 */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public SessionResponse add(
-            @PathVariable UUID sessionId,
+    public RoomResponse add(
+            @PathVariable UUID roomId,
             @RequestBody AddParticipantRequest request) {
         UserId userId = request.userId() == null ? null : UserId.of(request.userId());
         AddParticipantCommand command =
-                new AddParticipantCommand(SessionId.of(sessionId), userId, request.guestName());
-        Session session = addParticipantUseCase.execute(command);
-        return SessionResponse.from(session);
+                new AddParticipantCommand(RoomId.of(roomId), userId, request.guestName());
+        Room room = addParticipantUseCase.execute(command);
+        return RoomResponse.from(room);
     }
 
     /** 参加キャンセル(生成前)。 */
     @DeleteMapping("/{participantId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void remove(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
-        removeParticipantUseCase.execute(SessionId.of(sessionId), ParticipantId.of(participantId));
+    public void remove(@PathVariable UUID roomId, @PathVariable UUID participantId) {
+        removeParticipantUseCase.execute(RoomId.of(roomId), ParticipantId.of(participantId));
     }
 
     /** 早退(在席状態を LEFT に)。未開始セットの編成対象から外れる。 */
     @PostMapping("/{participantId}/leave")
-    public SessionResponse leave(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
-        Session session = markParticipantLeftUseCase.execute(
-                SessionId.of(sessionId), ParticipantId.of(participantId));
-        return SessionResponse.from(session);
+    public RoomResponse leave(@PathVariable UUID roomId, @PathVariable UUID participantId) {
+        Room room = markParticipantLeftUseCase.execute(
+                RoomId.of(roomId), ParticipantId.of(participantId));
+        return RoomResponse.from(room);
     }
 
     /** 復帰(在席状態を ACTIVE に戻す)。 */
     @PostMapping("/{participantId}/reactivate")
-    public SessionResponse reactivate(@PathVariable UUID sessionId, @PathVariable UUID participantId) {
-        Session session = reactivateParticipantUseCase.execute(
-                SessionId.of(sessionId), ParticipantId.of(participantId));
-        return SessionResponse.from(session);
+    public RoomResponse reactivate(@PathVariable UUID roomId, @PathVariable UUID participantId) {
+        Room room = reactivateParticipantUseCase.execute(
+                RoomId.of(roomId), ParticipantId.of(participantId));
+        return RoomResponse.from(room);
     }
 
     /** 名前(ニックネーム)を変更する。番号のまま作った参加者に後から名前を付ける。 */
     @PostMapping("/{participantId}/rename")
-    public SessionResponse rename(
-            @PathVariable UUID sessionId,
+    public RoomResponse rename(
+            @PathVariable UUID roomId,
             @PathVariable UUID participantId,
             @Valid @RequestBody RenameParticipantRequest request) {
-        Session session = renameParticipantUseCase.execute(
-                SessionId.of(sessionId), ParticipantId.of(participantId), request.name());
-        return SessionResponse.from(session);
+        Room room = renameParticipantUseCase.execute(
+                RoomId.of(roomId), ParticipantId.of(participantId), request.name());
+        return RoomResponse.from(room);
     }
 }

@@ -7,15 +7,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
-import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
-import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
+import com.shuttlematch.application.usecase.room.GenerateMatchesCommand;
+import com.shuttlematch.application.usecase.room.GenerateMatchesUseCase;
+import com.shuttlematch.application.usecase.room.GetMatchScheduleUseCase;
 import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchNumber;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.match.Pair;
-import com.shuttlematch.domain.model.session.ParticipantId;
-import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.domain.model.room.ParticipantId;
+import com.shuttlematch.domain.model.room.RoomId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,18 +39,18 @@ class MatchControllerTest {
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.StartSetUseCase startSetUseCase;
+    private com.shuttlematch.application.usecase.room.StartSetUseCase startSetUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.AddSetsUseCase addSetsUseCase;
+    private com.shuttlematch.application.usecase.room.AddSetsUseCase addSetsUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.ReplanFutureSetsUseCase replanFutureSetsUseCase;
+    private com.shuttlematch.application.usecase.room.ReplanFutureSetsUseCase replanFutureSetsUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.RevertSetUseCase revertSetUseCase;
+    private com.shuttlematch.application.usecase.room.RevertSetUseCase revertSetUseCase;
 
-    private final UUID sessionId = UUID.randomUUID();
+    private final UUID roomId = UUID.randomUUID();
 
     private MatchSchedule sampleSchedule() {
         ParticipantId p1 = ParticipantId.newId();
@@ -58,7 +58,7 @@ class MatchControllerTest {
         ParticipantId p3 = ParticipantId.newId();
         ParticipantId p4 = ParticipantId.newId();
         Match match = Match.of(MatchNumber.of(1), 1, 1, new Pair(p1, p2), new Pair(p3, p4));
-        return new MatchSchedule(SessionId.of(sessionId), List.of(match));
+        return new MatchSchedule(RoomId.of(roomId), List.of(match));
     }
 
     @Test
@@ -67,11 +67,11 @@ class MatchControllerTest {
         when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/generate", sessionId)
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId)
                         .contentType("application/json")
                         .content("{\"matchCount\": 15}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.sessionId").value(sessionId.toString()))
+                .andExpect(jsonPath("$.roomId").value(roomId.toString()))
                 .andExpect(jsonPath("$.matchCount").value(1))
                 .andExpect(jsonPath("$.matches[0].matchNumber").value(1))
                 .andExpect(jsonPath("$.matches[0].setNumber").value(1))
@@ -84,7 +84,7 @@ class MatchControllerTest {
         when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/generate", sessionId))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId))
                 .andExpect(status().isOk());
     }
 
@@ -94,7 +94,7 @@ class MatchControllerTest {
         when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
                 .thenThrow(new IllegalArgumentException("最低 4 人必要です"));
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/generate", sessionId))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("最低 4 人必要です"));
     }
@@ -102,7 +102,7 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST generate: matchCount が0以下なら 400(バリデーション)")
     void generateReturnsBadRequestForNonPositiveMatchCount() throws Exception {
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/generate", sessionId)
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId)
                         .contentType("application/json")
                         .content("{\"matchCount\": 0}"))
                 .andExpect(status().isBadRequest());
@@ -111,10 +111,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST sets/{n}/start: 200 で更新後スケジュールを返す")
     void startSetReturnsSchedule() throws Exception {
-        when(startSetUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
+        when(startSetUseCase.execute(any(RoomId.class), org.mockito.ArgumentMatchers.eq(1)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets/{n}/start", sessionId, 1))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets/{n}/start", roomId, 1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matches.length()").value(1));
     }
@@ -122,10 +122,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST sets: 200 でセット追加後のスケジュールを返す")
     void addSetsReturnsSchedule() throws Exception {
-        when(addSetsUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(3)))
+        when(addSetsUseCase.execute(any(RoomId.class), org.mockito.ArgumentMatchers.eq(3)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId)
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets", roomId)
                         .contentType("application/json")
                         .content("{\"setCount\": 3}"))
                 .andExpect(status().isOk())
@@ -135,17 +135,17 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST sets: ボディ省略なら1セット追加する")
     void addSetsDefaultsToOne() throws Exception {
-        when(addSetsUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
+        when(addSetsUseCase.execute(any(RoomId.class), org.mockito.ArgumentMatchers.eq(1)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets", roomId))
                 .andExpect(status().isOk());
     }
 
     @Test
     @DisplayName("POST sets: setCount が0以下なら 400(バリデーション)")
     void addSetsReturnsBadRequestForNonPositive() throws Exception {
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId)
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets", roomId)
                         .contentType("application/json")
                         .content("{\"setCount\": 0}"))
                 .andExpect(status().isBadRequest());
@@ -154,10 +154,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST sets/{n}/revert: 200 で戻した後のスケジュールを返す")
     void revertSetReturnsSchedule() throws Exception {
-        when(revertSetUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(2)))
+        when(revertSetUseCase.execute(any(RoomId.class), org.mockito.ArgumentMatchers.eq(2)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets/{n}/revert", sessionId, 2))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets/{n}/revert", roomId, 2))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matches.length()").value(1));
     }
@@ -165,10 +165,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("POST replan: 200 で再編成後のスケジュールを返す")
     void replanReturnsSchedule() throws Exception {
-        when(replanFutureSetsUseCase.execute(any(SessionId.class)))
+        when(replanFutureSetsUseCase.execute(any(RoomId.class)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/replan", sessionId))
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/replan", roomId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matches.length()").value(1));
     }
@@ -176,10 +176,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("GET matches: 200 でスケジュールを返す")
     void getReturnsSchedule() throws Exception {
-        when(getMatchScheduleUseCase.execute(any(SessionId.class)))
+        when(getMatchScheduleUseCase.execute(any(RoomId.class)))
                 .thenReturn(Optional.of(sampleSchedule()));
 
-        mockMvc.perform(get("/api/v1/sessions/{sessionId}/matches", sessionId))
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/matches", roomId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matches.length()").value(1));
     }
@@ -187,10 +187,10 @@ class MatchControllerTest {
     @Test
     @DisplayName("GET matches: 未生成なら 404 を返す")
     void getReturnsNotFoundWhenAbsent() throws Exception {
-        when(getMatchScheduleUseCase.execute(any(SessionId.class)))
+        when(getMatchScheduleUseCase.execute(any(RoomId.class)))
                 .thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/api/v1/sessions/{sessionId}/matches", sessionId))
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/matches", roomId))
                 .andExpect(status().isNotFound());
     }
 }

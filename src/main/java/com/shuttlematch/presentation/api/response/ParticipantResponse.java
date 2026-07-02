@@ -1,6 +1,6 @@
 package com.shuttlematch.presentation.api.response;
 
-import com.shuttlematch.domain.model.session.Participant;
+import com.shuttlematch.domain.model.room.Participant;
 
 /**
  * 参加者のレスポンス表現。

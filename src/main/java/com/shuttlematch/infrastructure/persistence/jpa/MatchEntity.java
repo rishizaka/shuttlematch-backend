@@ -16,7 +16,7 @@ import lombok.Setter;
 
 /**
  * matches テーブルに対応する JPA エンティティ。
- * ペアの各プレイヤーは session_participants(id) を参照する。
+ * ペアの各プレイヤーは room_participants(id) を参照する。
  */
 @Entity
 @Table(name = "matches")
