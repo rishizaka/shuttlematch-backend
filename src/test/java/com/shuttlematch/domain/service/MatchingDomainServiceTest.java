@@ -168,4 +168,53 @@ class MatchingDomainServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.generate(sessionId, participants(4), 0, 10));
     }
+
+    @Test
+    @DisplayName("addSets は既存の後ろにセットを継ぎ足す(セット番号・試合番号を継続、既存は保持)")
+    void addSetsAppendsContinuingNumbers() {
+        MatchingDomainService service = serviceWithSeed(11L);
+        List<ParticipantId> pool = participants(6);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 3);
+
+        MatchSchedule updated = service.addSets(base, pool, 1, 2);
+
+        assertEquals(5, updated.setCount());
+        assertEquals(5, updated.size());
+        for (int i = 0; i < updated.size(); i++) {
+            assertEquals(i + 1, updated.matches().get(i).matchNumber().value());
+        }
+        // 既存の3試合は先頭にそのまま残る
+        assertEquals(base.matches(), updated.matches().subList(0, 3));
+    }
+
+    @Test
+    @DisplayName("addSets 後も出場回数が公平に保たれる(最大と最小の差は1以内)")
+    void addSetsKeepsFairness() {
+        MatchingDomainService service = serviceWithSeed(12L);
+        List<ParticipantId> pool = participants(7);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 5);
+
+        MatchSchedule updated = service.addSets(base, pool, 1, 5);
+
+        Map<ParticipantId, Integer> counts = new HashMap<>();
+        pool.forEach(p -> counts.put(p, 0));
+        for (Match m : updated.matches()) {
+            counts.merge(m.pairA().player1(), 1, Integer::sum);
+            counts.merge(m.pairA().player2(), 1, Integer::sum);
+            counts.merge(m.pairB().player1(), 1, Integer::sum);
+            counts.merge(m.pairB().player2(), 1, Integer::sum);
+        }
+        int max = counts.values().stream().max(Integer::compareTo).orElseThrow();
+        int min = counts.values().stream().min(Integer::compareTo).orElseThrow();
+        assertTrue(max - min <= 1, "出場回数の偏りが大きい: max=" + max + ", min=" + min);
+    }
+
+    @Test
+    @DisplayName("addSets: 追加セット数が0以下の場合は例外を投げる")
+    void addSetsThrowsWhenAdditionalSetCountIsNotPositive() {
+        MatchingDomainService service = serviceWithSeed(13L);
+        List<ParticipantId> pool = participants(4);
+        MatchSchedule base = service.generate(sessionId, pool, 1, 2);
+        assertThrows(IllegalArgumentException.class, () -> service.addSets(base, pool, 1, 0));
+    }
 }

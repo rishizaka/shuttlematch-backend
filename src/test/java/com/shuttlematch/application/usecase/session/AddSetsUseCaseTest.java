@@ -9,7 +9,6 @@ import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.session.Session;
 import com.shuttlematch.domain.model.session.SessionId;
 import com.shuttlematch.domain.model.session.SessionStatus;
-import com.shuttlematch.domain.model.session.SessionVisibility;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.SessionRepository;
@@ -24,20 +23,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class GenerateMatchesUseCaseTest {
+class AddSetsUseCaseTest {
 
     private FakeSessionRepository sessionRepository;
     private FakeMatchScheduleRepository matchScheduleRepository;
-    private GenerateMatchesUseCase useCase;
+    private MatchingDomainService matchingDomainService;
+    private AddSetsUseCase useCase;
 
     @BeforeEach
     void setUp() {
         sessionRepository = new FakeSessionRepository();
         matchScheduleRepository = new FakeMatchScheduleRepository();
-        useCase = new GenerateMatchesUseCase(
-                sessionRepository,
-                matchScheduleRepository,
-                new MatchingDomainService(new Random(100L)));
+        matchingDomainService = new MatchingDomainService(new Random(100L));
+        useCase = new AddSetsUseCase(
+                sessionRepository, matchScheduleRepository, matchingDomainService);
     }
 
     private Session openSessionWithGuests(int count) {
@@ -52,69 +51,36 @@ class GenerateMatchesUseCaseTest {
     }
 
     @Test
-    @DisplayName("セッションの参加者から生成し、保存して返す。セッションは生成済みになる")
-    void generatesAndPersistsSchedule() {
-        Session session = openSessionWithGuests(8);
-
-        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(session.id()));
-
-        // 1コート(デフォルト) × デフォルト10セット = 10試合
-        assertThat(result.size()).isEqualTo(10);
-        assertThat(matchScheduleRepository.findBySessionId(session.id())).contains(result);
-        assertThat(sessionRepository.findById(session.id()).orElseThrow().status())
-                .isEqualTo(SessionStatus.GENERATED);
-    }
-
-    @Test
-    @DisplayName("試合数を指定して生成できる")
-    void generatesWithCustomMatchCount() {
+    @DisplayName("既存スケジュールにセットを追加し、保存して返す")
+    void addsSetsToExistingSchedule() {
         Session session = openSessionWithGuests(6);
+        // 既存: 1コート×3セット = 3試合
+        MatchSchedule base = matchingDomainService.generate(session.id(), session.participantIds(), 1, 3);
+        matchScheduleRepository.save(base);
 
-        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(session.id(), 5));
+        MatchSchedule result = useCase.execute(session.id(), 2);
 
+        assertThat(result.setCount()).isEqualTo(5);
         assertThat(result.size()).isEqualTo(5);
-    }
-
-    @Test
-    @DisplayName("再生成時は既存スケジュールを削除してから保存する")
-    void regenerationDeletesExistingSchedule() {
-        Session session = openSessionWithGuests(8);
-
-        useCase.execute(new GenerateMatchesCommand(session.id()));
-        useCase.execute(new GenerateMatchesCommand(session.id()));
-
-        assertThat(matchScheduleRepository.deleteCount).isEqualTo(2);
+        assertThat(matchScheduleRepository.findBySessionId(session.id())).contains(result);
+        // 追加はあくまで置き換え保存(削除→保存)なので1件だけ残る
         assertThat(matchScheduleRepository.count(session.id())).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("参加者が4人未満なら例外を投げ、保存しない")
-    void doesNotPersistWhenTooFewParticipants() {
-        Session session = openSessionWithGuests(3);
+    @DisplayName("スケジュール未生成なら ResourceNotFoundException")
+    void throwsWhenScheduleNotGenerated() {
+        Session session = openSessionWithGuests(6);
 
-        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(session.id())))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(matchScheduleRepository.findBySessionId(session.id())).isEmpty();
+        assertThatThrownBy(() -> useCase.execute(session.id(), 1))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     @DisplayName("セッションが存在しなければ ResourceNotFoundException")
     void throwsWhenSessionNotFound() {
-        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(SessionId.newId())))
+        assertThatThrownBy(() -> useCase.execute(SessionId.newId(), 1))
                 .isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    @Test
-    @DisplayName("終了済みセッションでは生成できない(IllegalStateException)")
-    void throwsWhenSessionClosed() {
-        Session closed = Session.reconstitute(
-                SessionId.newId(), CircleId.of(UUID.randomUUID()), "終了", OffsetDateTime.now(),
-                null, null, null, SessionStatus.CLOSED, SessionVisibility.PUBLIC,
-                UserId.of(UUID.randomUUID()), List.of());
-        sessionRepository.save(closed);
-
-        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(closed.id())))
-                .isInstanceOf(IllegalStateException.class);
     }
 
     // --- インメモリ実装 ---
@@ -141,7 +107,6 @@ class GenerateMatchesUseCaseTest {
 
     private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {
         private final List<MatchSchedule> store = new ArrayList<>();
-        int deleteCount = 0;
 
         @Override
         public MatchSchedule save(MatchSchedule schedule) {
@@ -158,13 +123,12 @@ class GenerateMatchesUseCaseTest {
 
         @Override
         public void deleteBySessionId(SessionId sessionId) {
-            deleteCount++;
             store.removeIf(s -> s.sessionId().equals(sessionId));
         }
 
         @Override
-        public java.util.Optional<com.shuttlematch.domain.model.match.MatchSchedule> startSet(
-                SessionId sessionId, int setNumber, java.time.OffsetDateTime startedAt) {
+        public Optional<MatchSchedule> startSet(
+                SessionId sessionId, int setNumber, OffsetDateTime startedAt) {
             return findBySessionId(sessionId);
         }
 

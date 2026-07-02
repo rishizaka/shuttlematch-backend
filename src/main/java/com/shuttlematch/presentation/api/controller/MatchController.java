@@ -1,12 +1,14 @@
 package com.shuttlematch.presentation.api.controller;
 
+import com.shuttlematch.application.usecase.session.AddSetsUseCase;
 import com.shuttlematch.application.usecase.session.GenerateMatchesCommand;
 import com.shuttlematch.application.usecase.session.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.session.GetMatchScheduleUseCase;
-import com.shuttlematch.application.usecase.session.StartMatchUseCase;
+import com.shuttlematch.application.usecase.session.StartSetUseCase;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.session.SessionId;
+import com.shuttlematch.presentation.api.request.AddSetsRequest;
 import com.shuttlematch.presentation.api.request.GenerateMatchesRequest;
 import com.shuttlematch.presentation.api.response.MatchScheduleResponse;
 
@@ -28,15 +30,18 @@ public class MatchController {
 
     private final GenerateMatchesUseCase generateMatchesUseCase;
     private final GetMatchScheduleUseCase getMatchScheduleUseCase;
-    private final StartMatchUseCase startMatchUseCase;
+    private final StartSetUseCase startSetUseCase;
+    private final AddSetsUseCase addSetsUseCase;
 
     public MatchController(
             GenerateMatchesUseCase generateMatchesUseCase,
             GetMatchScheduleUseCase getMatchScheduleUseCase,
-            StartMatchUseCase startMatchUseCase) {
+            StartSetUseCase startSetUseCase,
+            AddSetsUseCase addSetsUseCase) {
         this.generateMatchesUseCase = generateMatchesUseCase;
         this.getMatchScheduleUseCase = getMatchScheduleUseCase;
-        this.startMatchUseCase = startMatchUseCase;
+        this.startSetUseCase = startSetUseCase;
+        this.addSetsUseCase = addSetsUseCase;
     }
 
     /** 試合を生成する(既存があれば再生成)。 */
@@ -50,13 +55,23 @@ public class MatchController {
         return MatchScheduleResponse.from(schedule);
     }
 
-    /** 指定試合のセットを開始する(開始時刻を記録)。アクティブなセットは最新開始のものとなる。 */
-    @PostMapping("/{matchNumber}/start")
-    public MatchScheduleResponse start(
+    /** 既存スケジュールにセットを追加する(既存の結果は保持)。setCount 省略時は1セット。 */
+    @PostMapping("/sets")
+    public MatchScheduleResponse addSets(
             @PathVariable UUID sessionId,
-            @PathVariable int matchNumber) {
+            @Valid @RequestBody(required = false) AddSetsRequest request) {
+        int additionalSetCount = (request == null || request.setCount() == null) ? 1 : request.setCount();
         return MatchScheduleResponse.from(
-                startMatchUseCase.execute(SessionId.of(sessionId), matchNumber));
+                addSetsUseCase.execute(SessionId.of(sessionId), additionalSetCount));
+    }
+
+    /** 指定セット(全コート)を開始する(開始時刻を記録)。アクティブなセットは最新開始のものとなる。 */
+    @PostMapping("/sets/{setNumber}/start")
+    public MatchScheduleResponse startSet(
+            @PathVariable UUID sessionId,
+            @PathVariable int setNumber) {
+        return MatchScheduleResponse.from(
+                startSetUseCase.execute(SessionId.of(sessionId), setNumber));
     }
 
     /** 試合スケジュールを取得する。 */

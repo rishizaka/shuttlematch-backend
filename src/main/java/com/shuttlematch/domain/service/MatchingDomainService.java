@@ -54,28 +54,73 @@ public class MatchingDomainService {
     public MatchSchedule generate(
             SessionId sessionId, List<ParticipantId> participants, int courtCount, int setCount) {
         Objects.requireNonNull(sessionId, "sessionId は必須です");
-        Objects.requireNonNull(participants, "participants は必須です");
-        if (courtCount < 1) {
-            throw new IllegalArgumentException("コート数は1以上である必要があります: " + courtCount);
-        }
+        requireCourtCount(courtCount);
         if (setCount < 1) {
             throw new IllegalArgumentException("セット数は1以上である必要があります: " + setCount);
         }
 
-        List<ParticipantId> pool = new ArrayList<>(new LinkedHashSet<>(participants));
-        int required = PLAYERS_PER_MATCH * courtCount;
-        if (pool.size() < required) {
-            throw new IllegalArgumentException(
-                    "コート数 " + courtCount + " の試合には最低 " + required + " 人必要です (現在 " + pool.size() + " 人)");
-        }
-
+        List<ParticipantId> pool = validatedPool(participants, courtCount);
         Map<ParticipantId, Integer> playCount = new HashMap<>();
         pool.forEach(p -> playCount.put(p, 0));
 
-        List<Match> matches = new ArrayList<>();
-        int matchNumber = 1;
+        List<Match> matches = buildSets(pool, playCount, courtCount, setCount, 1, 1);
+        return new MatchSchedule(sessionId, matches);
+    }
 
-        for (int setNumber = 1; setNumber <= setCount; setNumber++) {
+    /**
+     * 既存スケジュールにセットを追加する。出場回数・セット番号・試合番号は既存の状態から継続し、
+     * 追加分も公平な輪番になるようにする。既存の試合(開始時刻を含む)はそのまま保持される。
+     *
+     * @param existing          追加元の既存スケジュール
+     * @param additionalSetCount 追加するセット数(1以上)
+     */
+    public MatchSchedule addSets(
+            MatchSchedule existing, List<ParticipantId> participants,
+            int courtCount, int additionalSetCount) {
+        Objects.requireNonNull(existing, "existing は必須です");
+        requireCourtCount(courtCount);
+        if (additionalSetCount < 1) {
+            throw new IllegalArgumentException("追加セット数は1以上である必要があります: " + additionalSetCount);
+        }
+
+        List<ParticipantId> pool = validatedPool(participants, courtCount);
+
+        // 既存の出場回数を集計して輪番を継続する(現在の参加者に含まれる分のみ)。
+        Map<ParticipantId, Integer> playCount = new HashMap<>();
+        pool.forEach(p -> playCount.put(p, 0));
+        for (Match m : existing.matches()) {
+            for (ParticipantId p : participantsOf(m)) {
+                playCount.computeIfPresent(p, (key, count) -> count + 1);
+            }
+        }
+
+        int startSetNumber = existing.setCount() + 1;
+        int startMatchNumber = existing.matches().stream()
+                .mapToInt(m -> m.matchNumber().value())
+                .max()
+                .orElse(0) + 1;
+
+        List<Match> added =
+                buildSets(pool, playCount, courtCount, additionalSetCount, startSetNumber, startMatchNumber);
+
+        List<Match> all = new ArrayList<>(existing.matches());
+        all.addAll(added);
+        return new MatchSchedule(existing.sessionId(), all);
+    }
+
+    /**
+     * playCount を消費しながら setCount 分のセットを組み立てる。
+     * setNumber は startSetNumber から、matchNumber は startMatchNumber から連番で振る。
+     */
+    private List<Match> buildSets(
+            List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
+            int courtCount, int setCount, int startSetNumber, int startMatchNumber) {
+        int required = PLAYERS_PER_MATCH * courtCount;
+        List<Match> matches = new ArrayList<>();
+        int matchNumber = startMatchNumber;
+
+        for (int i = 0; i < setCount; i++) {
+            int setNumber = startSetNumber + i;
             List<ParticipantId> selected = pickLeastPlayed(pool, playCount, required);
             fisherYatesShuffle(selected); // セット内のコート割り・ペア分けをランダム化
 
@@ -87,8 +132,32 @@ public class MatchingDomainService {
             }
             selected.forEach(p -> playCount.merge(p, 1, Integer::sum));
         }
+        return matches;
+    }
 
-        return new MatchSchedule(sessionId, matches);
+    private void requireCourtCount(int courtCount) {
+        if (courtCount < 1) {
+            throw new IllegalArgumentException("コート数は1以上である必要があります: " + courtCount);
+        }
+    }
+
+    /** 参加者を重複排除し、コート数に対して人数が足りているか検証したプールを返す。 */
+    private List<ParticipantId> validatedPool(List<ParticipantId> participants, int courtCount) {
+        Objects.requireNonNull(participants, "participants は必須です");
+        List<ParticipantId> pool = new ArrayList<>(new LinkedHashSet<>(participants));
+        int required = PLAYERS_PER_MATCH * courtCount;
+        if (pool.size() < required) {
+            throw new IllegalArgumentException(
+                    "コート数 " + courtCount + " の試合には最低 " + required + " 人必要です (現在 " + pool.size() + " 人)");
+        }
+        return pool;
+    }
+
+    /** 1試合に出場する4名の ParticipantId。 */
+    private List<ParticipantId> participantsOf(Match match) {
+        return List.of(
+                match.pairA().player1(), match.pairA().player2(),
+                match.pairB().player1(), match.pairB().player2());
     }
 
     /** 出場回数が少ない順に n 名を選ぶ(同回数同士はランダムにタイブレーク)。 */

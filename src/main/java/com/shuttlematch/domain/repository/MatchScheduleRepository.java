@@ -20,8 +20,8 @@ public interface MatchScheduleRepository {
     void deleteBySessionId(SessionId sessionId);
 
     /**
-     * 指定試合のセット開始時刻を記録し、更新後のスケジュールを返す。
-     * スケジュールや該当試合番号が無ければ空を返す。
+     * 指定セット(全コートの試合)の開始時刻を記録し、更新後のスケジュールを返す。
+     * スケジュールや該当セット番号が無ければ空を返す。
      */
-    Optional<MatchSchedule> startMatch(SessionId sessionId, int matchNumber, OffsetDateTime startedAt);
+    Optional<MatchSchedule> startSet(SessionId sessionId, int setNumber, OffsetDateTime startedAt);
 }

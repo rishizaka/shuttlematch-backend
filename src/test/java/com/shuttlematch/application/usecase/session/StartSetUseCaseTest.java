@@ -22,23 +22,27 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class StartMatchUseCaseTest {
+class StartSetUseCaseTest {
 
     private FakeRepo repo;
-    private StartMatchUseCase useCase;
+    private StartSetUseCase useCase;
     private final SessionId sessionId = SessionId.newId();
 
     @BeforeEach
     void setUp() {
         repo = new FakeRepo();
-        useCase = new StartMatchUseCase(repo, Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC));
+        useCase = new StartSetUseCase(repo, Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC));
     }
 
+    /** 1コート想定: 試合番号 n をそのままセット番号として扱う。 */
     private Match match(int n, OffsetDateTime startedAt) {
+        return match(n, n, 1, startedAt);
+    }
+
+    private Match match(int matchNumber, int setNumber, int court, OffsetDateTime startedAt) {
         Pair a = new Pair(ParticipantId.newId(), ParticipantId.newId());
         Pair b = new Pair(ParticipantId.newId(), ParticipantId.newId());
-        // 1コート想定: 試合番号 n をそのままセット番号として扱う
-        return new Match(MatchNumber.of(n), n, 1, a, b, startedAt);
+        return new Match(MatchNumber.of(matchNumber), setNumber, court, a, b, startedAt);
     }
 
     private void seed(List<Match> matches) {
@@ -46,8 +50,8 @@ class StartMatchUseCaseTest {
     }
 
     @Test
-    @DisplayName("最初は第1試合だけ開始できる")
-    void startsFirstMatch() {
+    @DisplayName("最初は第1セットだけ開始できる")
+    void startsFirstSet() {
         seed(List.of(match(1, null), match(2, null), match(3, null)));
         MatchSchedule result = useCase.execute(sessionId, 1);
         assertThat(result.matches().get(0).isStarted()).isTrue();
@@ -71,12 +75,28 @@ class StartMatchUseCaseTest {
     }
 
     @Test
-    @DisplayName("既に開始済みの試合は再開始できない(順番外)")
+    @DisplayName("既に開始済みのセットは再開始できない(順番外)")
     void cannotRestartStarted() {
         OffsetDateTime t1 = OffsetDateTime.parse("2026-06-30T09:00:00Z");
         seed(List.of(match(1, t1), match(2, null)));
         assertThatThrownBy(() -> useCase.execute(sessionId, 1))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("複数コート: セット開始でそのセットの全コートに開始時刻が付く")
+    void startsAllCourtsInSet() {
+        // 第1セット: 試合1(コート1)/試合2(コート2)、第2セット: 試合3/試合4
+        seed(List.of(
+                match(1, 1, 1, null), match(2, 1, 2, null),
+                match(3, 2, 1, null), match(4, 2, 2, null)));
+
+        MatchSchedule result = useCase.execute(sessionId, 1);
+
+        assertThat(result.matches().stream().filter(m -> m.setNumber() == 1))
+                .allMatch(Match::isStarted);
+        assertThat(result.matches().stream().filter(m -> m.setNumber() == 2))
+                .noneMatch(Match::isStarted);
     }
 
     @Test
@@ -106,13 +126,22 @@ class StartMatchUseCaseTest {
         }
 
         @Override
-        public Optional<MatchSchedule> startMatch(SessionId id, int matchNumber, OffsetDateTime startedAt) {
+        public Optional<MatchSchedule> startSet(SessionId id, int setNumber, OffsetDateTime startedAt) {
             if (schedule == null) {
                 return Optional.empty();
             }
             List<Match> updated = new ArrayList<>();
+            boolean matched = false;
             for (Match m : schedule.matches()) {
-                updated.add(m.matchNumber().value() == matchNumber ? m.withStartedAt(startedAt) : m);
+                if (m.setNumber() == setNumber) {
+                    updated.add(m.withStartedAt(startedAt));
+                    matched = true;
+                } else {
+                    updated.add(m);
+                }
+            }
+            if (!matched) {
+                return Optional.empty();
             }
             schedule = new MatchSchedule(id, updated);
             return Optional.of(schedule);

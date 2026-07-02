@@ -30,7 +30,9 @@ class CorsConfigTest {
     @MockitoBean
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.StartMatchUseCase startMatchUseCase;
+    private com.shuttlematch.application.usecase.session.StartSetUseCase startSetUseCase;
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.AddSetsUseCase addSetsUseCase;
 
     @Test
     @DisplayName("許可オリジンからのプリフライトは Access-Control-Allow-Origin を返す")

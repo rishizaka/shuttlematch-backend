@@ -43,15 +43,19 @@ public class MatchScheduleRepositoryAdapter implements MatchScheduleRepository {
     }
 
     @Override
-    public Optional<MatchSchedule> startMatch(SessionId sessionId, int matchNumber, OffsetDateTime startedAt) {
+    public Optional<MatchSchedule> startSet(SessionId sessionId, int setNumber, OffsetDateTime startedAt) {
         return jpaRepository.findBySessionId(sessionId.value())
                 .flatMap(schedule -> {
-                    Optional<MatchEntity> target = schedule.getMatches().stream()
-                            .filter(m -> m.getMatchNumber() == matchNumber)
-                            .findFirst();
-                    target.ifPresent(m -> m.setStartedAt(startedAt));
+                    List<MatchEntity> targets = schedule.getMatches().stream()
+                            .filter(m -> m.getSetNumber() == setNumber)
+                            .toList();
+                    if (targets.isEmpty()) {
+                        return Optional.empty();
+                    }
+                    // セット内の全コートの試合に同じ開始時刻を記録する
+                    targets.forEach(m -> m.setStartedAt(startedAt));
                     // JPA のダーティチェックで started_at が更新される
-                    return target.map(m -> toDomain(jpaRepository.save(schedule)));
+                    return Optional.of(toDomain(jpaRepository.save(schedule)));
                 });
     }
 

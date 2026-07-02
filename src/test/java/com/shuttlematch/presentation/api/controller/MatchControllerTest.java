@@ -39,7 +39,10 @@ class MatchControllerTest {
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.session.StartMatchUseCase startMatchUseCase;
+    private com.shuttlematch.application.usecase.session.StartSetUseCase startSetUseCase;
+
+    @MockitoBean
+    private com.shuttlematch.application.usecase.session.AddSetsUseCase addSetsUseCase;
 
     private final UUID sessionId = UUID.randomUUID();
 
@@ -65,6 +68,7 @@ class MatchControllerTest {
                 .andExpect(jsonPath("$.sessionId").value(sessionId.toString()))
                 .andExpect(jsonPath("$.matchCount").value(1))
                 .andExpect(jsonPath("$.matches[0].matchNumber").value(1))
+                .andExpect(jsonPath("$.matches[0].setNumber").value(1))
                 .andExpect(jsonPath("$.matches[0].pairA.player1Id").exists());
     }
 
@@ -99,14 +103,46 @@ class MatchControllerTest {
     }
 
     @Test
-    @DisplayName("POST start: 200 で更新後スケジュールを返す")
-    void startReturnsSchedule() throws Exception {
-        when(startMatchUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
+    @DisplayName("POST sets/{n}/start: 200 で更新後スケジュールを返す")
+    void startSetReturnsSchedule() throws Exception {
+        when(startSetUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
                 .thenReturn(sampleSchedule());
 
-        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/{n}/start", sessionId, 1))
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets/{n}/start", sessionId, 1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matches.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("POST sets: 200 でセット追加後のスケジュールを返す")
+    void addSetsReturnsSchedule() throws Exception {
+        when(addSetsUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(3)))
+                .thenReturn(sampleSchedule());
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId)
+                        .contentType("application/json")
+                        .content("{\"setCount\": 3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matches.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("POST sets: ボディ省略なら1セット追加する")
+    void addSetsDefaultsToOne() throws Exception {
+        when(addSetsUseCase.execute(any(SessionId.class), org.mockito.ArgumentMatchers.eq(1)))
+                .thenReturn(sampleSchedule());
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("POST sets: setCount が0以下なら 400(バリデーション)")
+    void addSetsReturnsBadRequestForNonPositive() throws Exception {
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/matches/sets", sessionId)
+                        .contentType("application/json")
+                        .content("{\"setCount\": 0}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

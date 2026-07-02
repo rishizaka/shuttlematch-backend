@@ -125,29 +125,31 @@ class MatchSchedulePersistenceIT {
     }
 
     @Test
-    @DisplayName("セット開始で started_at が記録される")
-    void startMatchRecordsStartedAt() {
+    @DisplayName("セット開始で、そのセットの全コートに started_at が記録される")
+    void startSetRecordsStartedAtForAllCourts() {
         SessionId sessionId = SessionId.newId();
-        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 6);
+        // 2コート分(8名)。第1セット=試合1,2 / 第2セット=試合3,4 ...
+        List<ParticipantId> participants = seedSessionWithParticipants(sessionId, 8);
         em.flush();
 
         matchScheduleRepository.save(
-                new MatchingDomainService(new Random(3L)).generate(sessionId, participants, 1, 5));
+                new MatchingDomainService(new Random(3L)).generate(sessionId, participants, 2, 5));
         em.flush();
         em.clear();
 
         java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
-        matchScheduleRepository.startMatch(sessionId, 2, now);
+        matchScheduleRepository.startSet(sessionId, 2, now);
         em.flush();
         em.clear();
 
         MatchSchedule restored = matchScheduleRepository.findBySessionId(sessionId).orElseThrow();
-        var match2 = restored.matches().stream()
-                .filter(m -> m.matchNumber().value() == 2).findFirst().orElseThrow();
-        var match1 = restored.matches().stream()
-                .filter(m -> m.matchNumber().value() == 1).findFirst().orElseThrow();
-        assertThat(match2.isStarted()).isTrue();
-        assertThat(match1.isStarted()).isFalse();
+        // 第2セットの全試合(全コート)が開始済み
+        assertThat(restored.matches().stream().filter(m -> m.setNumber() == 2))
+                .isNotEmpty()
+                .allMatch(m -> m.isStarted());
+        // 第1セットは未開始のまま
+        assertThat(restored.matches().stream().filter(m -> m.setNumber() == 1))
+                .noneMatch(m -> m.isStarted());
     }
 
     @Test
