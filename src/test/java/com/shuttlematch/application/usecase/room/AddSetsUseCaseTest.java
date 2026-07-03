@@ -102,6 +102,11 @@ class AddSetsUseCaseTest {
         public List<Room> findByStatus(RoomStatus status) {
             return store.values().stream().filter(s -> s.status() == status).toList();
         }
+
+        @Override
+        public int countCreatedSince(com.shuttlematch.domain.model.user.UserId createdBy, java.time.OffsetDateTime since) {
+            return 0;
+        }
     }
 
     private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {

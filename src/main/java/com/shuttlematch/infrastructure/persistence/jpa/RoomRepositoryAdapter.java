@@ -9,6 +9,7 @@ import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.RoomRepository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,12 @@ public class RoomRepositoryAdapter implements RoomRepository {
         return roomJpaRepository.findByStatusOrderByHeldAtAsc(status.name()).stream()
                 .map(this::toDomain)
                 .toList();
+    }
+
+    @Override
+    public int countCreatedSince(UserId createdBy, OffsetDateTime since) {
+        return (int) roomJpaRepository.countByCreatedByAndCreatedAtGreaterThanEqual(
+                createdBy.value(), since);
     }
 
     private void reconcileParticipants(Room room) {

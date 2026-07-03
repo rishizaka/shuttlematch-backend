@@ -34,6 +34,7 @@ public class QuickCreateRoomUseCase {
         if (command.participantCount() < 1) {
             throw new IllegalArgumentException("参加人数は1以上にしてください");
         }
+        RoomCreationLimit.check(roomRepository, command.createdBy());
 
         Room room = Room.create(
                 command.title(),

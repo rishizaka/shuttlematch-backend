@@ -15,6 +15,9 @@ public class Room {
     /** ダブルスの試合生成に必要な最低人数。定員の下限チェックにも用いる。 */
     private static final int MIN_PARTICIPANTS = 4;
 
+    /** 1ユーザーが1日に作成できるルーム数の上限(スパム的な連続作成の防止)。 */
+    public static final int MAX_ROOMS_PER_USER_PER_DAY = 3;
+
     private final RoomId id;
     private String title;
     private OffsetDateTime heldAt;

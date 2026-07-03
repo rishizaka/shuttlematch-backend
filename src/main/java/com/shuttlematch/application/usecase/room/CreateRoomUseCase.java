@@ -20,6 +20,8 @@ public class CreateRoomUseCase {
 
     @Transactional
     public Room execute(CreateRoomCommand command) {
+        RoomCreationLimit.check(roomRepository, command.createdBy());
+
         Room room = Room.create(
                 command.title(),
                 command.heldAt(),

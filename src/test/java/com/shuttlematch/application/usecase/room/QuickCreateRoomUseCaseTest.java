@@ -60,10 +60,30 @@ class QuickCreateSessionUseCaseTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    @DisplayName("同一ユーザーが当日 3 件作成済みなら例外(4件目は作れない)")
+    void throwsWhenDailyLimitReached() {
+        roomRepository.createdTodayCount = Room.MAX_ROOMS_PER_USER_PER_DAY;
+
+        assertThatThrownBy(() -> useCase.execute(cmd(1, 4)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("当日 2 件作成済みなら 3 件目は作れる")
+    void allowsWhenUnderDailyLimit() {
+        roomRepository.createdTodayCount = Room.MAX_ROOMS_PER_USER_PER_DAY - 1;
+
+        Room room = useCase.execute(cmd(1, 4));
+
+        assertThat(room.status()).isEqualTo(RoomStatus.GENERATED);
+    }
+
     // --- インメモリ実装 ---
 
     private static final class FakeSessionRepository implements RoomRepository {
         private final java.util.Map<RoomId, Room> store = new java.util.HashMap<>();
+        private int createdTodayCount = 0;
 
         @Override
         public Room save(Room room) {
@@ -79,6 +99,11 @@ class QuickCreateSessionUseCaseTest {
         @Override
         public List<Room> findByStatus(RoomStatus status) {
             return store.values().stream().filter(s -> s.status() == status).toList();
+        }
+
+        @Override
+        public int countCreatedSince(com.shuttlematch.domain.model.user.UserId createdBy, java.time.OffsetDateTime since) {
+            return createdTodayCount;
         }
     }
 
