@@ -25,7 +25,9 @@ import java.util.random.RandomGenerator;
  * 各コートで4名が同時にプレーする(同じ人が同じセット内で2コートに出ることはない)。
  * <ul>
  *   <li>各セットの出場者は「出場回数が少ない順」に 4×コート数 名を選ぶ(公平な輪番)。</li>
- *   <li>タイブレーク・ペア分けは Fisher-Yates シャッフルでランダム化する。</li>
+ *   <li>出場回数が同じなら「最後に出場したセットが古い順」(＝長く休んでいる人)を優先し、
+ *       同一人物が連続で休みにならないようにする。</li>
+ *   <li>それでも同順位ならタイブレーク・ペア分けを Fisher-Yates シャッフルでランダム化する。</li>
  * </ul>
  */
 public class MatchingDomainService {
@@ -62,8 +64,11 @@ public class MatchingDomainService {
         List<ParticipantId> pool = validatedPool(participants, courtCount);
         Map<ParticipantId, Integer> playCount = new HashMap<>();
         pool.forEach(p -> playCount.put(p, 0));
+        // 0 = まだ一度も出場していない(全員同条件でスタート)。
+        Map<ParticipantId, Integer> lastPlayedSet = new HashMap<>();
+        pool.forEach(p -> lastPlayedSet.put(p, 0));
 
-        List<Match> matches = buildSets(pool, playCount, courtCount, setCount, 1, 1);
+        List<Match> matches = buildSets(pool, playCount, lastPlayedSet, courtCount, setCount, 1, 1);
         return new MatchSchedule(roomId, matches);
     }
 
@@ -87,12 +92,16 @@ public class MatchingDomainService {
 
         // 既存の出場回数を引き継ぐ。新規参加者は優先させない(既存の最小回数にシード)。
         Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, existing.matches());
+        // 「最後に出場したセット」も引き継ぐ。連続休み回避が既存セットをまたいで効くようにする。
+        Map<ParticipantId, Integer> lastPlayedSet =
+                seededLastPlayedSet(pool, existing.matches(), existing.setCount());
 
         int startSetNumber = existing.setCount() + 1;
         int startMatchNumber = maxMatchNumber(existing.matches()) + 1;
 
-        List<Match> added =
-                buildSets(pool, playCount, courtCount, additionalSetCount, startSetNumber, startMatchNumber);
+        List<Match> added = buildSets(
+                pool, playCount, lastPlayedSet, courtCount, additionalSetCount,
+                startSetNumber, startMatchNumber);
 
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
@@ -139,8 +148,10 @@ public class MatchingDomainService {
         }
 
         Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, committed);
+        Map<ParticipantId, Integer> lastPlayedSet =
+                seededLastPlayedSet(pool, committed, maxStartedSet);
         List<Match> future = buildSets(
-                pool, playCount, effectiveCourtCount, futureSetCount,
+                pool, playCount, lastPlayedSet, effectiveCourtCount, futureSetCount,
                 maxStartedSet + 1, maxMatchNumber(committed) + 1);
 
         List<Match> all = new ArrayList<>(committed);
@@ -172,16 +183,38 @@ public class MatchingDomainService {
         return playCount;
     }
 
+    /**
+     * 参照試合から各参加者が「最後に出場したセット番号」を集計する。
+     * 連続休み回避のソートキーに使う(値が小さいほど長く休んでいる=優先出場)。
+     * プールに居るが未出場の参加者(途中参加など)は、既に居た人より休憩が長い扱いに
+     * ならないよう {@code fallbackSetNumber}(直前セット)にシードして横入りさせる。
+     */
+    private Map<ParticipantId, Integer> seededLastPlayedSet(
+            List<ParticipantId> pool, List<Match> sourceMatches, int fallbackSetNumber) {
+        Map<ParticipantId, Integer> lastPlayed = new HashMap<>();
+        for (Match m : sourceMatches) {
+            for (ParticipantId p : participantsOf(m)) {
+                lastPlayed.merge(p, m.setNumber(), Math::max);
+            }
+        }
+        Map<ParticipantId, Integer> result = new HashMap<>();
+        for (ParticipantId p : pool) {
+            result.put(p, lastPlayed.getOrDefault(p, fallbackSetNumber));
+        }
+        return result;
+    }
+
     private int maxMatchNumber(List<Match> matches) {
         return matches.stream().mapToInt(m -> m.matchNumber().value()).max().orElse(0);
     }
 
     /**
-     * playCount を消費しながら setCount 分のセットを組み立てる。
+     * playCount / lastPlayedSet を消費しながら setCount 分のセットを組み立てる。
      * setNumber は startSetNumber から、matchNumber は startMatchNumber から連番で振る。
      */
     private List<Match> buildSets(
             List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> lastPlayedSet,
             int courtCount, int setCount, int startSetNumber, int startMatchNumber) {
         int required = PLAYERS_PER_MATCH * courtCount;
         List<Match> matches = new ArrayList<>();
@@ -189,7 +222,7 @@ public class MatchingDomainService {
 
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
-            List<ParticipantId> selected = pickLeastPlayed(pool, playCount, required);
+            List<ParticipantId> selected = pickLeastPlayed(pool, playCount, lastPlayedSet, required);
             fisherYatesShuffle(selected); // セット内のコート割り・ペア分けをランダム化
 
             for (int court = 1; court <= courtCount; court++) {
@@ -198,7 +231,10 @@ public class MatchingDomainService {
                 Pair pairB = new Pair(selected.get(base + 2), selected.get(base + 3));
                 matches.add(Match.of(MatchNumber.of(matchNumber++), setNumber, court, pairA, pairB));
             }
-            selected.forEach(p -> playCount.merge(p, 1, Integer::sum));
+            for (ParticipantId p : selected) {
+                playCount.merge(p, 1, Integer::sum);
+                lastPlayedSet.put(p, setNumber); // 出場したセットを記録(休みの連続長の判定に使う)
+            }
         }
         return matches;
     }
@@ -228,12 +264,18 @@ public class MatchingDomainService {
                 match.pairB().player1(), match.pairB().player2());
     }
 
-    /** 出場回数が少ない順に n 名を選ぶ(同回数同士はランダムにタイブレーク)。 */
+    /**
+     * 出場者 n 名を選ぶ。優先度は
+     * (1) 出場回数が少ない順(公平性)、(2) 最後に出場したセットが古い順(＝長く休んでいる人・連続休み回避)、
+     * (3) ランダム(先頭シャッフルによる最終タイブレーク)。
+     */
     private List<ParticipantId> pickLeastPlayed(
-            List<ParticipantId> pool, Map<ParticipantId, Integer> playCount, int n) {
+            List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> lastPlayedSet, int n) {
         List<ParticipantId> candidates = new ArrayList<>(pool);
         fisherYatesShuffle(candidates);
-        candidates.sort(Comparator.comparingInt(playCount::get));
+        candidates.sort(Comparator.comparingInt((ParticipantId p) -> playCount.get(p))
+                .thenComparingInt(p -> lastPlayedSet.get(p)));
         return new ArrayList<>(candidates.subList(0, n));
     }
 

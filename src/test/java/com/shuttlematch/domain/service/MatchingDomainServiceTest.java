@@ -128,6 +128,67 @@ class MatchingDomainServiceTest {
         assertTrue(max - min <= 1, "出場回数の偏りが大きい: max=" + max + ", min=" + min);
     }
 
+    /**
+     * 各セットの休憩者(出場していない参加者)集合を、セット番号昇順で返す。
+     */
+    private List<Set<ParticipantId>> restingPerSet(MatchSchedule schedule, List<ParticipantId> pool) {
+        int setCount = schedule.setCount();
+        List<Set<ParticipantId>> resting = new java.util.ArrayList<>();
+        for (int set = 1; set <= setCount; set++) {
+            final int s = set;
+            Set<ParticipantId> playing = new HashSet<>();
+            schedule.matches().stream()
+                    .filter(m -> m.setNumber() == s)
+                    .forEach(m -> playing.addAll(participantsOf(m)));
+            Set<ParticipantId> rest = new HashSet<>(pool);
+            rest.removeAll(playing);
+            resting.add(rest);
+        }
+        return resting;
+    }
+
+    /** 連続する2セットの両方で休んでいる参加者の総数(0 なら連続休みなし)。 */
+    private long countConsecutiveRests(List<Set<ParticipantId>> resting) {
+        long total = 0;
+        for (int i = 1; i < resting.size(); i++) {
+            for (ParticipantId p : resting.get(i)) {
+                if (resting.get(i - 1).contains(p)) total++;
+            }
+        }
+        return total;
+    }
+
+    @Test
+    @DisplayName("5人1コートでは毎セット1人休みが完全ローテーションし、連続休みが発生しない")
+    void noConsecutiveRestsWithFiveOnOneCourt() {
+        List<ParticipantId> pool = participants(5);
+        MatchSchedule schedule = serviceWithSeed(101L).generate(roomId, pool, 1, 10);
+
+        long consecutive = countConsecutiveRests(restingPerSet(schedule, pool));
+        assertEquals(0, consecutive, "連続で2セット休む人がいる");
+    }
+
+    @Test
+    @DisplayName("6人1コート(毎セット2人休み)でも連続休みは発生しない")
+    void noConsecutiveRestsWithSixOnOneCourt() {
+        List<ParticipantId> pool = participants(6);
+        MatchSchedule schedule = serviceWithSeed(102L).generate(roomId, pool, 1, 12);
+
+        long consecutive = countConsecutiveRests(restingPerSet(schedule, pool));
+        assertEquals(0, consecutive, "連続で2セット休む人がいる");
+    }
+
+    @Test
+    @DisplayName("複数のシードでも連続休みが起きない(9人2コート=毎セット1人休み)")
+    void noConsecutiveRestsAcrossSeeds() {
+        List<ParticipantId> pool = participants(9);
+        for (long seed = 0; seed < 20; seed++) {
+            MatchSchedule schedule = serviceWithSeed(seed).generate(roomId, pool, 2, 10);
+            long consecutive = countConsecutiveRests(restingPerSet(schedule, pool));
+            assertEquals(0, consecutive, "seed=" + seed + " で連続休みが発生");
+        }
+    }
+
     @Test
     @DisplayName("同じシードなら同じスケジュールを生成する(決定的)")
     void deterministicWithSameSeed() {
