@@ -29,6 +29,15 @@ public class User {
         return new User(UserId.newId(), null, name, email, passwordHash);
     }
 
+    /**
+     * ゲストユーザー(メール・パスワードなし)を作成する。
+     * 未ログインでルームを作成する人の識別に使う。
+     */
+    public static User createGuest(String name) {
+        validateName(name);
+        return new User(UserId.newId(), null, name, null, null);
+    }
+
     public static User reconstitute(
             UserId id, String cognitoSub, String name, String email, String passwordHash) {
         return new User(id, cognitoSub, name, email, passwordHash);
@@ -68,6 +77,11 @@ public class User {
 
     public boolean hasPassword() {
         return passwordHash != null;
+    }
+
+    /** メール未登録のゲストユーザーか。 */
+    public boolean isGuest() {
+        return email == null;
     }
 
     @Override

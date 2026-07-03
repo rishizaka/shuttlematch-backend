@@ -31,7 +31,8 @@ public class UserEntity {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "email", nullable = false)
+    /** ゲストユーザーは null。 */
+    @Column(name = "email")
     private String email;
 
     @Column(name = "password_hash")

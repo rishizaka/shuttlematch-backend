@@ -1,9 +1,11 @@
 package com.shuttlematch.presentation.api.controller;
 
+import com.shuttlematch.application.usecase.user.CreateGuestUserUseCase;
 import com.shuttlematch.application.usecase.user.CreateUserCommand;
 import com.shuttlematch.application.usecase.user.CreateUserUseCase;
 import com.shuttlematch.application.usecase.user.GetUserUseCase;
 import com.shuttlematch.domain.model.user.UserId;
+import com.shuttlematch.presentation.api.request.CreateGuestUserRequest;
 import com.shuttlematch.presentation.api.request.CreateUserRequest;
 import com.shuttlematch.presentation.api.response.UserResponse;
 
@@ -27,10 +29,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final CreateUserUseCase createUserUseCase;
+    private final CreateGuestUserUseCase createGuestUserUseCase;
     private final GetUserUseCase getUserUseCase;
 
-    public UserController(CreateUserUseCase createUserUseCase, GetUserUseCase getUserUseCase) {
+    public UserController(
+            CreateUserUseCase createUserUseCase,
+            CreateGuestUserUseCase createGuestUserUseCase,
+            GetUserUseCase getUserUseCase) {
         this.createUserUseCase = createUserUseCase;
+        this.createGuestUserUseCase = createGuestUserUseCase;
         this.getUserUseCase = getUserUseCase;
     }
 
@@ -39,6 +46,15 @@ public class UserController {
     public UserResponse create(@Valid @RequestBody CreateUserRequest request) {
         return UserResponse.from(createUserUseCase.execute(
                 new CreateUserCommand(request.name(), request.email(), request.password())));
+    }
+
+    /** ゲストユーザーを発行する。未ログインでルームを作成する際の作成者として使う。 */
+    @PostMapping("/guest")
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserResponse createGuest(
+            @Valid @RequestBody(required = false) CreateGuestUserRequest request) {
+        return UserResponse.from(
+                createGuestUserUseCase.execute(request == null ? null : request.name()));
     }
 
     @GetMapping("/{userId}")

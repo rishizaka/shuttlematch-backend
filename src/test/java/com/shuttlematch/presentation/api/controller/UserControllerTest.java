@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.shuttlematch.application.usecase.user.CreateGuestUserUseCase;
 import com.shuttlematch.application.usecase.user.CreateUserCommand;
 import com.shuttlematch.application.usecase.user.CreateUserUseCase;
 import com.shuttlematch.application.usecase.user.GetUserUseCase;
@@ -25,6 +26,8 @@ class UserControllerTest {
 
     @MockitoBean
     private CreateUserUseCase createUserUseCase;
+    @MockitoBean
+    private CreateGuestUserUseCase createGuestUserUseCase;
     @MockitoBean
     private GetUserUseCase getUserUseCase;
 
@@ -48,5 +51,17 @@ class UserControllerTest {
                         .contentType("application/json")
                         .content("{\"name\":\"田中\",\"email\":\"not-an-email\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST users/guest: ボディなしでも 201 でゲストユーザーを返す")
+    void createGuestWithoutBody() throws Exception {
+        when(createGuestUserUseCase.execute(any()))
+                .thenReturn(User.createGuest("ゲスト"));
+
+        mockMvc.perform(post("/api/v1/users/guest"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("ゲスト"))
+                .andExpect(jsonPath("$.email").isEmpty());
     }
 }
