@@ -21,6 +21,15 @@ public interface RoomRepository {
     /** 指定ステータスのセッションを開催日時の昇順で取得する。 */
     List<Room> findByStatus(RoomStatus status);
 
+    /**
+     * 条件を組み合わせてセッションを検索する(開催日時の昇順)。
+     * 各条件は null なら適用しない。heldFrom は以上、heldTo は未満。
+     */
+    List<Room> search(RoomStatus status, OffsetDateTime heldFrom, OffsetDateTime heldTo);
+
     /** 指定ユーザーが since 以降に作成したルーム数(作成回数制限のチェック用)。 */
     int countCreatedSince(UserId createdBy, OffsetDateTime since);
+
+    /** 終了していないルームのうち、createdBefore より前に作成されたものを取得する(期限切れ自動終了用)。 */
+    List<Room> findNotClosedCreatedBefore(OffsetDateTime createdBefore);
 }

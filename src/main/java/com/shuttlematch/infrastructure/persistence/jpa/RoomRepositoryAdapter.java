@@ -10,12 +10,15 @@ import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.domain.repository.RoomRepository;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -64,9 +67,39 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     @Override
+    public List<Room> search(RoomStatus status, OffsetDateTime heldFrom, OffsetDateTime heldTo) {
+        // null の条件は SQL に含めない(PostgreSQL は null パラメータの型を推論できないため、
+        // (:p is null or ...) 方式ではなく Specification で動的に組み立てる)。
+        List<Specification<RoomEntity>> conditions = new ArrayList<>();
+        if (status != null) {
+            conditions.add((root, query, cb) -> cb.equal(root.get("status"), status.name()));
+        }
+        if (heldFrom != null) {
+            conditions.add((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("heldAt"), heldFrom));
+        }
+        if (heldTo != null) {
+            conditions.add((root, query, cb) -> cb.lessThan(root.get("heldAt"), heldTo));
+        }
+        return roomJpaRepository
+                .findAll(Specification.allOf(conditions), Sort.by(Sort.Direction.ASC, "heldAt"))
+                .stream()
+                .map(this::toDomain)
+                .toList();
+    }
+
+    @Override
     public int countCreatedSince(UserId createdBy, OffsetDateTime since) {
         return (int) roomJpaRepository.countByCreatedByAndCreatedAtGreaterThanEqual(
                 createdBy.value(), since);
+    }
+
+    @Override
+    public List<Room> findNotClosedCreatedBefore(OffsetDateTime createdBefore) {
+        return roomJpaRepository
+                .findByStatusNotAndCreatedAtBefore(RoomStatus.CLOSED.name(), createdBefore)
+                .stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     private void reconcileParticipants(Room room) {

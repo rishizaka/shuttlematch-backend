@@ -105,6 +105,20 @@ class QuickCreateSessionUseCaseTest {
         public int countCreatedSince(com.shuttlematch.domain.model.user.UserId createdBy, java.time.OffsetDateTime since) {
             return createdTodayCount;
         }
+
+        @Override
+        public java.util.List<Room> findNotClosedCreatedBefore(java.time.OffsetDateTime createdBefore) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public List<Room> search(RoomStatus status, java.time.OffsetDateTime heldFrom, java.time.OffsetDateTime heldTo) {
+            return store.values().stream()
+                    .filter(r -> status == null || r.status() == status)
+                    .filter(r -> heldFrom == null || !r.heldAt().isBefore(heldFrom))
+                    .filter(r -> heldTo == null || r.heldAt().isBefore(heldTo))
+                    .toList();
+        }
     }
 
     private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {

@@ -16,6 +16,7 @@ import com.shuttlematch.presentation.api.request.QuickCreateRoomRequest;
 import com.shuttlematch.presentation.api.response.RoomResponse;
 
 import jakarta.validation.Valid;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -79,12 +80,15 @@ public class RoomController {
     }
 
     /**
-     * ルーム一覧を取得する。status 省略時は募集中(OPEN)を返す。
+     * ルーム一覧を取得する。条件はいずれも省略可(省略時は絞り込まない)。
+     * heldFrom は開催日時がその時刻以上、heldTo は未満のルームに絞る(ISO-8601)。
      */
     @GetMapping("/api/v1/rooms")
     public List<RoomResponse> list(
-            @RequestParam(name = "status", defaultValue = "OPEN") RoomStatus status) {
-        return listSessionsUseCase.execute(status).stream()
+            @RequestParam(name = "status", required = false) RoomStatus status,
+            @RequestParam(name = "heldFrom", required = false) OffsetDateTime heldFrom,
+            @RequestParam(name = "heldTo", required = false) OffsetDateTime heldTo) {
+        return listSessionsUseCase.execute(status, heldFrom, heldTo).stream()
                 .map(RoomResponse::from)
                 .toList();
     }
