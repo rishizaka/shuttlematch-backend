@@ -19,6 +19,8 @@ public class Room {
     public static final int MAX_ROOMS_PER_USER_PER_DAY = 3;
 
     private final RoomId id;
+    /** URL共有用の短いコード(/r/{code})。 */
+    private final String shareCode;
     private String title;
     private OffsetDateTime heldAt;
     private String location;
@@ -29,10 +31,11 @@ public class Room {
     private final List<Participant> participants;
 
     private Room(
-            RoomId id, String title, OffsetDateTime heldAt,
+            RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
             UserId createdBy, List<Participant> participants) {
         this.id = id;
+        this.shareCode = shareCode;
         this.title = title;
         this.heldAt = heldAt;
         this.location = location;
@@ -65,16 +68,16 @@ public class Room {
         if (courtCount != null && courtCount < 1) {
             throw new IllegalArgumentException("コート数は1以上にしてください");
         }
-        return new Room(RoomId.newId(), title, heldAt, location, capacity, courtCount,
-                RoomStatus.OPEN, createdBy, new ArrayList<>());
+        return new Room(RoomId.newId(), ShareCode.generate(), title, heldAt, location,
+                capacity, courtCount, RoomStatus.OPEN, createdBy, new ArrayList<>());
     }
 
     /** 永続化層からの復元用。 */
     public static Room reconstitute(
-            RoomId id, String title, OffsetDateTime heldAt,
+            RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
             UserId createdBy, List<Participant> participants) {
-        return new Room(id, title, heldAt, location, capacity, courtCount, status,
+        return new Room(id, shareCode, title, heldAt, location, capacity, courtCount, status,
                 createdBy, new ArrayList<>(participants));
     }
 
@@ -201,6 +204,10 @@ public class Room {
 
     public RoomId id() {
         return id;
+    }
+
+    public String shareCode() {
+        return shareCode;
     }
 
     public String title() {

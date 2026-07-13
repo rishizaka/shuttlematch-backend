@@ -3,6 +3,7 @@ package com.shuttlematch.presentation.api.controller;
 import com.shuttlematch.application.usecase.room.CloseRoomUseCase;
 import com.shuttlematch.application.usecase.room.CreateRoomCommand;
 import com.shuttlematch.application.usecase.room.CreateRoomUseCase;
+import com.shuttlematch.application.usecase.room.GetRoomByShareCodeUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomUseCase;
 import com.shuttlematch.application.usecase.room.ListRoomsUseCase;
 import com.shuttlematch.application.usecase.room.QuickCreateRoomCommand;
@@ -36,6 +37,7 @@ public class RoomController {
 
     private final CreateRoomUseCase createSessionUseCase;
     private final GetRoomUseCase getRoomUseCase;
+    private final GetRoomByShareCodeUseCase getRoomByShareCodeUseCase;
     private final ListRoomsUseCase listSessionsUseCase;
     private final CloseRoomUseCase closeSessionUseCase;
     private final QuickCreateRoomUseCase quickCreateSessionUseCase;
@@ -43,11 +45,13 @@ public class RoomController {
     public RoomController(
             CreateRoomUseCase createSessionUseCase,
             GetRoomUseCase getRoomUseCase,
+            GetRoomByShareCodeUseCase getRoomByShareCodeUseCase,
             ListRoomsUseCase listSessionsUseCase,
             CloseRoomUseCase closeSessionUseCase,
             QuickCreateRoomUseCase quickCreateSessionUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.getRoomUseCase = getRoomUseCase;
+        this.getRoomByShareCodeUseCase = getRoomByShareCodeUseCase;
         this.listSessionsUseCase = listSessionsUseCase;
         this.closeSessionUseCase = closeSessionUseCase;
         this.quickCreateSessionUseCase = quickCreateSessionUseCase;
@@ -96,6 +100,12 @@ public class RoomController {
     @GetMapping("/api/v1/rooms/{roomId}")
     public RoomResponse get(@PathVariable UUID roomId) {
         return RoomResponse.from(getRoomUseCase.execute(RoomId.of(roomId)));
+    }
+
+    /** 共有コードでルームを取得する(短縮URL /r/{code} の解決用)。 */
+    @GetMapping("/api/v1/rooms/code/{shareCode}")
+    public RoomResponse getByShareCode(@PathVariable String shareCode) {
+        return RoomResponse.from(getRoomByShareCodeUseCase.execute(shareCode));
     }
 
     /** セッションを終了する(終了済みとして履歴に残す)。 */

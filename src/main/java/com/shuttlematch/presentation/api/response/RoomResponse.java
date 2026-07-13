@@ -10,6 +10,7 @@ import java.util.List;
  */
 public record RoomResponse(
         String id,
+        String shareCode,
         String title,
         OffsetDateTime heldAt,
         String location,
@@ -26,6 +27,7 @@ public record RoomResponse(
                 .toList();
         return new RoomResponse(
                 room.id().value().toString(),
+                room.shareCode(),
                 room.title(),
                 room.heldAt(),
                 room.location(),

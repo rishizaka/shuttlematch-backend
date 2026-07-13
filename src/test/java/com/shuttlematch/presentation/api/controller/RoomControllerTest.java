@@ -37,6 +37,9 @@ class RoomControllerTest {
     private GetRoomUseCase getRoomUseCase;
 
     @MockitoBean
+    private com.shuttlematch.application.usecase.room.GetRoomByShareCodeUseCase getRoomByShareCodeUseCase;
+
+    @MockitoBean
     private com.shuttlematch.application.usecase.room.ListRoomsUseCase listSessionsUseCase;
 
     @MockitoBean
@@ -138,7 +141,7 @@ class RoomControllerTest {
     @DisplayName("POST close: 200 で終了済みセッションを返す")
     void closeReturnsSession() throws Exception {
         Room closed = Room.reconstitute(
-                RoomId.newId(), "練習会",
+                RoomId.newId(), "testcode", "練習会",
                 OffsetDateTime.parse("2026-07-01T18:00:00+09:00"), null, null, null,
                 RoomStatus.CLOSED,
                 UserId.of(UUID.randomUUID()), java.util.List.of());

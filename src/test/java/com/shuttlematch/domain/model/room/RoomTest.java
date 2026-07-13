@@ -111,7 +111,7 @@ class RoomTest {
     @DisplayName("終了済みセッションには参加者を追加できない")
     void cannotAddAfterClosed() {
         Room closed = Room.reconstitute(
-                RoomId.newId(), "終了", OffsetDateTime.now(),
+                RoomId.newId(), "testcode", "終了", OffsetDateTime.now(),
                 null, null, null, RoomStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         assertThatThrownBy(() -> closed.addGuest("追加"))
                 .isInstanceOf(IllegalStateException.class);
@@ -121,7 +121,7 @@ class RoomTest {
     @DisplayName("終了済みセッションは生成済みに遷移できない")
     void closedCannotBeGenerated() {
         Room closed = Room.reconstitute(
-                RoomId.newId(), "終了", OffsetDateTime.now(),
+                RoomId.newId(), "testcode", "終了", OffsetDateTime.now(),
                 null, null, null, RoomStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         assertThatThrownBy(closed::markGenerated)
                 .isInstanceOf(IllegalStateException.class);

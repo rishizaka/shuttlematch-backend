@@ -45,6 +45,7 @@ public class RoomRepositoryAdapter implements RoomRepository {
         RoomEntity entity = roomJpaRepository.findById(room.id().value())
                 .orElseGet(RoomEntity::new);
         entity.setId(room.id().value());
+        entity.setShareCode(room.shareCode());
         entity.setTitle(room.title());
         entity.setHeldAt(room.heldAt());
         entity.setLocation(room.location());
@@ -57,6 +58,11 @@ public class RoomRepositoryAdapter implements RoomRepository {
         reconcileParticipants(room);
 
         return findById(room.id()).orElseThrow();
+    }
+
+    @Override
+    public Optional<Room> findByShareCode(String shareCode) {
+        return roomJpaRepository.findByShareCode(shareCode).map(this::toDomain);
     }
 
     @Override
@@ -163,6 +169,7 @@ public class RoomRepositoryAdapter implements RoomRepository {
                 .toList();
         return Room.reconstitute(
                 RoomId.of(entity.getId()),
+                entity.getShareCode(),
                 entity.getTitle(),
                 entity.getHeldAt(),
                 entity.getLocation(),

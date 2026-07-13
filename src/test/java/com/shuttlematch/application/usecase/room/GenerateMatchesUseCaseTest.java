@@ -106,7 +106,7 @@ class GenerateMatchesUseCaseTest {
     @DisplayName("終了済みセッションでは生成できない(IllegalStateException)")
     void throwsWhenSessionClosed() {
         Room closed = Room.reconstitute(
-                RoomId.newId(), "終了", OffsetDateTime.now(),
+                RoomId.newId(), "testcode", "終了", OffsetDateTime.now(),
                 null, null, null, RoomStatus.CLOSED,                 UserId.of(UUID.randomUUID()), List.of());
         roomRepository.save(closed);
 
@@ -128,6 +128,13 @@ class GenerateMatchesUseCaseTest {
         @Override
         public Optional<Room> findById(RoomId roomId) {
             return Optional.ofNullable(store.get(roomId));
+        }
+
+        @Override
+        public Optional<Room> findByShareCode(String shareCode) {
+            return store.values().stream()
+                    .filter(r -> shareCode.equals(r.shareCode()))
+                    .findFirst();
         }
 
         @Override

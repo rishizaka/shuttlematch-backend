@@ -18,6 +18,9 @@ public interface RoomRepository {
 
     Optional<Room> findById(RoomId roomId);
 
+    /** 共有コードでルームを取得する(短縮URL /r/{code} の解決用)。 */
+    Optional<Room> findByShareCode(String shareCode);
+
     /** 指定ステータスのセッションを開催日時の昇順で取得する。 */
     List<Room> findByStatus(RoomStatus status);
 

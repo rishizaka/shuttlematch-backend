@@ -61,11 +61,12 @@ class MatchSchedulePersistenceIT {
                 .executeUpdate();
 
         em.createNativeQuery(
-                        "insert into rooms(id, title, held_at, created_by) "
-                                + "values (?1, ?2, now(), ?3)")
+                        "insert into rooms(id, title, held_at, created_by, share_code) "
+                                + "values (?1, ?2, now(), ?3, ?4)")
                 .setParameter(1, roomId.value())
                 .setParameter(2, "テスト練習会")
                 .setParameter(3, userId)
+                .setParameter(4, roomId.value().toString().substring(0, 8))
                 .executeUpdate();
 
         return IntStream.range(0, participantCount)

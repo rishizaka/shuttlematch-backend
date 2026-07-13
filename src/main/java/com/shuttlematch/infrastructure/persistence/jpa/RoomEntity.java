@@ -40,6 +40,9 @@ public class RoomEntity {
     @Column(name = "court_count")
     private Integer courtCount;
 
+    @Column(name = "share_code", nullable = false)
+    private String shareCode;
+
     @Column(name = "status", nullable = false)
     private String status;
 

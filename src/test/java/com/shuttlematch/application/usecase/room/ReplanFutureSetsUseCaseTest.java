@@ -122,6 +122,13 @@ class ReplanFutureSetsUseCaseTest {
         }
 
         @Override
+        public Optional<Room> findByShareCode(String shareCode) {
+            return store.values().stream()
+                    .filter(r -> shareCode.equals(r.shareCode()))
+                    .findFirst();
+        }
+
+        @Override
         public List<Room> findByStatus(RoomStatus status) {
             return store.values().stream().filter(s -> s.status() == status).toList();
         }
