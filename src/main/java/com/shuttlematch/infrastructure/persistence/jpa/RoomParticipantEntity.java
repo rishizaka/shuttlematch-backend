@@ -40,4 +40,8 @@ public class RoomParticipantEntity {
     // DB の default now() に任せるため書き込みはしない
     @Column(name = "joined_at", insertable = false, updatable = false)
     private OffsetDateTime joinedAt;
+
+    // 参加順の連番(DB のシーケンス既定値に任せる)。参加者番号の並び順の基準。
+    @Column(name = "join_order", insertable = false, updatable = false)
+    private Long joinOrder;
 }

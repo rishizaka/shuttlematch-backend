@@ -164,7 +164,9 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     private Room toDomain(RoomEntity entity) {
-        List<Participant> participants = participantJpaRepository.findByRoomId(entity.getId()).stream()
+        // 参加者番号は一覧の並び順で決まるため、参加順で安定的に取得する。
+        List<Participant> participants = participantJpaRepository
+                .findByRoomIdOrderByJoinOrderAsc(entity.getId()).stream()
                 .map(this::toParticipant)
                 .toList();
         return Room.reconstitute(
