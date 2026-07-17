@@ -35,6 +35,50 @@ class MatchingDomainServiceTest {
     }
 
     @Test
+    @DisplayName("6人・短いセット数でも休憩ペアが数通りに固定ローテーションしない")
+    void restPairsDoNotLockIntoRotation() {
+        // 6人1コートは毎セット2人が休む。公平性の制約だけだと、同じ2人組が
+        // 毎回セットで休む「3ペアの固定ローテーション」に陥りやすい(対策前は6セットで約11%発生)。
+        // avoidRepeatedRest によりカップリングが崩れることを、多数試行の統計で保証する。
+        List<ParticipantId> pool = participants(6);
+        Map<ParticipantId, Integer> num = new HashMap<>();
+        for (int i = 0; i < pool.size(); i++) num.put(pool.get(i), i + 1);
+
+        int trials = 500;
+        int setCount = 6; // 最も固定化しやすい短さ
+        int fixed = 0;      // 休憩ペアが3種類以下(=固定ローテーション)だった試行
+        int consecutive = 0; // 連続2回休んだ人がいた試行(連続休み回避の維持を確認)
+        for (int t = 0; t < trials; t++) {
+            MatchSchedule sch = new MatchingDomainService(new Random(t))
+                    .generate(roomId, pool, 1, setCount);
+            Map<Integer, Set<Integer>> playing = new HashMap<>();
+            for (Match m : sch.matches()) {
+                Set<Integer> s = playing.computeIfAbsent(m.setNumber(), k -> new HashSet<>());
+                s.add(num.get(m.pairA().player1()));
+                s.add(num.get(m.pairA().player2()));
+                s.add(num.get(m.pairB().player1()));
+                s.add(num.get(m.pairB().player2()));
+            }
+            List<Set<Integer>> restList = new java.util.ArrayList<>();
+            for (int st = 1; st <= setCount; st++) {
+                Set<Integer> rest = new HashSet<>(List.of(1, 2, 3, 4, 5, 6));
+                rest.removeAll(playing.get(st));
+                restList.add(rest);
+            }
+            if (new HashSet<>(restList).size() <= 3) fixed++;
+            for (int k = 0; k + 1 < restList.size(); k++) {
+                Set<Integer> inter = new HashSet<>(restList.get(k));
+                inter.retainAll(restList.get(k + 1));
+                if (!inter.isEmpty()) { consecutive++; break; }
+            }
+        }
+        // 対策後は0件だが、乱数のブレを考慮してごく緩い上限で回帰を検出する。
+        assertTrue(fixed <= trials * 0.02,
+                "休憩ペアが固定ローテーションに陥りすぎ: " + fixed + "/" + trials);
+        assertEquals(0, consecutive, "同じ人が連続で休んでいる(連続休み回避が壊れている)");
+    }
+
+    @Test
     @DisplayName("参加者が4人未満の場合は例外を投げる")
     void throwsWhenFewerThanFourParticipants() {
         MatchingDomainService service = serviceWithSeed(1L);

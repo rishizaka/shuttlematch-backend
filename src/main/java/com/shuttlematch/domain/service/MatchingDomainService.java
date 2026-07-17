@@ -7,15 +7,19 @@ import com.shuttlematch.domain.model.match.Pair;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.RoomId;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
@@ -217,12 +221,27 @@ public class MatchingDomainService {
             Map<ParticipantId, Integer> lastPlayedSet,
             int courtCount, int setCount, int startSetNumber, int startMatchNumber) {
         int required = PLAYERS_PER_MATCH * courtCount;
+        int restSize = pool.size() - required; // 各セットで休む人数
         List<Match> matches = new ArrayList<>();
         int matchNumber = startMatchNumber;
+
+        // 直近セットの「休んだメンバーの組」を覚えておき、同じ組の反復を避ける。
+        // これがないと、公平性(出場回数)の制約だけでは同じ数人が毎回セットで一緒に休む
+        // カップリングが起き、少人数(例: 6人)で休憩ペアが数通りに固定化してしまう。
+        Deque<Set<ParticipantId>> recentRest = new ArrayDeque<>();
+        int restWindow = Math.max(1, pool.size() - 1);
 
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
             List<ParticipantId> selected = pickLeastPlayed(pool, playCount, lastPlayedSet, required);
+            if (restSize > 0) {
+                selected = avoidRepeatedRest(
+                        pool, selected, playCount, lastPlayedSet, setNumber, recentRest);
+                Set<ParticipantId> rest = new HashSet<>(pool);
+                rest.removeAll(selected);
+                recentRest.addLast(rest);
+                while (recentRest.size() > restWindow) recentRest.removeFirst();
+            }
             fisherYatesShuffle(selected); // セット内のコート割り・ペア分けをランダム化
 
             for (int court = 1; court <= courtCount; court++) {
@@ -277,6 +296,50 @@ public class MatchingDomainService {
         candidates.sort(Comparator.comparingInt((ParticipantId p) -> playCount.get(p))
                 .thenComparingInt(p -> lastPlayedSet.get(p)));
         return new ArrayList<>(candidates.subList(0, n));
+    }
+
+    /**
+     * 休憩メンバーの組が直近セットと同じにならないよう、必要なら出場者と1名入れ替える。
+     * <p>
+     * 入れ替えは公平性・連続休み回避を壊さない範囲だけで行う: 休む予定の r と出場予定の s を、
+     * 両者の出場回数が同じで、かつ s が直前セットで休んでいない(入れ替えても連続休みにならない)
+     * ときにだけ交換する。これで休憩ペアのカップリングが崩れ、少人数でも休みの組が多様になる。
+     *
+     * @return 入れ替え後の出場者リスト(避けられない場合は入力のまま)
+     */
+    private List<ParticipantId> avoidRepeatedRest(
+            List<ParticipantId> pool, List<ParticipantId> selected,
+            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> lastPlayedSet,
+            int setNumber, Deque<Set<ParticipantId>> recentRest) {
+        Set<ParticipantId> rest = new HashSet<>(pool);
+        rest.removeAll(selected);
+        if (!recentRest.contains(rest)) return selected;
+
+        // r(休む予定) と s(出る予定) を入れ替えた休憩組が直近に無ければ採用する。
+        // 候補はランダム順に走査し、崩し方が毎回同じにならないようにする。
+        List<ParticipantId> restList = new ArrayList<>(rest);
+        fisherYatesShuffle(restList);
+        List<ParticipantId> playingList = new ArrayList<>(selected);
+        fisherYatesShuffle(playingList);
+        for (ParticipantId r : restList) {
+            for (ParticipantId s : playingList) {
+                boolean sameCount = playCount.get(r).equals(playCount.get(s));
+                // s は直前セットに出ている(lastPlayed==setNumber-1)ときだけ休ませてよい。
+                boolean sNotConsecutive = lastPlayedSet.get(s) >= setNumber - 1;
+                if (sameCount && sNotConsecutive) {
+                    Set<ParticipantId> candidateRest = new HashSet<>(rest);
+                    candidateRest.remove(r);
+                    candidateRest.add(s);
+                    if (!recentRest.contains(candidateRest)) {
+                        List<ParticipantId> result = new ArrayList<>(selected);
+                        result.remove(s);
+                        result.add(r);
+                        return result;
+                    }
+                }
+            }
+        }
+        return selected;
     }
 
     private void fisherYatesShuffle(List<?> list) {
