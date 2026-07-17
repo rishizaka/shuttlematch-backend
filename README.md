@@ -63,6 +63,19 @@ createdb -O shuttlematch shuttlematch
 
 ### 2. アプリの起動
 
+**A) ワンコマンド起動 (推奨)**
+
+`run.sh` が JAVA_HOME の設定と PostgreSQL (Homebrew 版) の起動を面倒みてくれる:
+
+```bash
+./run.sh
+```
+
+- アプリ: http://localhost:8080
+- Swagger UI: http://localhost:8080/swagger-ui.html
+
+**B) 手動で起動する場合**
+
 Homebrew の `openjdk@21` は keg-only のため、`gradlew` を動かすには JAVA_HOME を通す必要がある。
 `~/.zshrc` に以下を一度追記しておくと以後は不要:
 
@@ -71,7 +84,7 @@ export JAVA_HOME="/opt/homebrew/opt/openjdk@21"
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
 
-その上で:
+その上で (DB は事前に起動しておくこと):
 
 ```bash
 ./gradlew bootRun
@@ -103,6 +116,40 @@ Testcontainers が PostgreSQL コンテナを自動起動するため **Docker �
 | `DB_URL` | `jdbc:postgresql://localhost:5432/shuttlematch` |
 | `DB_USERNAME` | `shuttlematch` |
 | `DB_PASSWORD` | `shuttlematch` |
+
+## データベースに接続する
+
+ローカルサーバーを立てたあと、DB を直接覗きたいときは以下。パスワードはいずれも `shuttlematch`。
+
+**A) Docker Compose で起動した場合**
+
+```bash
+docker compose exec postgres psql -U shuttlematch -d shuttlematch
+```
+
+**B) ローカルの PostgreSQL (Homebrew 版 / run.sh) で起動した場合**
+
+```bash
+/opt/homebrew/opt/postgresql@14/bin/psql -h localhost -p 5432 -U shuttlematch -d shuttlematch
+```
+
+psql の基本操作:
+
+```
+\dt              -- テーブル一覧
+\d <テーブル名>   -- テーブル定義
+\q               -- 抜ける
+```
+
+**GUI クライアント (TablePlus / DBeaver 等) で接続する場合**
+
+| 項目 | 値 |
+|------|-----|
+| Host | `localhost` |
+| Port | `5432` |
+| Database | `shuttlematch` |
+| User | `shuttlematch` |
+| Password | `shuttlematch` |
 
 ## 今後の実装 (Phase 1 MVP)
 
