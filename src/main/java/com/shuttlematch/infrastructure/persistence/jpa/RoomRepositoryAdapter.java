@@ -194,6 +194,13 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     @Override
+    public void deleteById(RoomId roomId) {
+        // rooms 行を削除すると room_participants / room_fixed_pairs / match_schedules(→matches)
+        // は DB の ON DELETE CASCADE で一緒に削除される。
+        roomJpaRepository.deleteById(roomId.value());
+    }
+
+    @Override
     public Optional<Room> findById(RoomId roomId) {
         return roomJpaRepository.findById(roomId.value())
                 .map(this::toDomain);

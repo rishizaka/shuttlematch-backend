@@ -1,7 +1,9 @@
 package com.shuttlematch.presentation.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -59,6 +61,9 @@ class RoomControllerTest {
 
     @MockitoBean
     private com.shuttlematch.application.usecase.room.QuickCreateRoomUseCase quickCreateSessionUseCase;
+
+    @MockitoBean
+    private com.shuttlematch.application.usecase.room.DeleteRoomUseCase deleteRoomUseCase;
 
     @MockitoBean
     private com.shuttlematch.application.usecase.room.RenameParticipantUseCase renameParticipantUseCase;
@@ -150,5 +155,22 @@ class RoomControllerTest {
         mockMvc.perform(post("/api/v1/rooms/{roomId}/close", UUID.randomUUID()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CLOSED"));
+    }
+
+    @Test
+    @DisplayName("DELETE room: 204 でルームを削除する")
+    void deleteReturnsNoContent() throws Exception {
+        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("DELETE room: 存在しなければ 404")
+    void deleteNotFound() throws Exception {
+        doThrow(new ResourceNotFoundException("なし"))
+                .when(deleteRoomUseCase).execute(any(RoomId.class));
+
+        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
     }
 }

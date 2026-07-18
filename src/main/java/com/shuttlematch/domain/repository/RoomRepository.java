@@ -16,6 +16,12 @@ public interface RoomRepository {
 
     Room save(Room room);
 
+    /**
+     * ルームを削除する。配下の参加者・固定ペア・試合表は DB のカスケードで一緒に削除される。
+     * 存在しない ID の場合は何もしない。
+     */
+    void deleteById(RoomId roomId);
+
     Optional<Room> findById(RoomId roomId);
 
     /** 共有コードでルームを取得する(短縮URL /r/{code} の解決用)。 */

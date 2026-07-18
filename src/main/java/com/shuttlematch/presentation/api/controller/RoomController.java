@@ -3,6 +3,7 @@ package com.shuttlematch.presentation.api.controller;
 import com.shuttlematch.application.usecase.room.CloseRoomUseCase;
 import com.shuttlematch.application.usecase.room.CreateRoomCommand;
 import com.shuttlematch.application.usecase.room.CreateRoomUseCase;
+import com.shuttlematch.application.usecase.room.DeleteRoomUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomByShareCodeUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomUseCase;
 import com.shuttlematch.application.usecase.room.ListRoomsUseCase;
@@ -21,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,6 +43,7 @@ public class RoomController {
     private final ListRoomsUseCase listSessionsUseCase;
     private final CloseRoomUseCase closeSessionUseCase;
     private final QuickCreateRoomUseCase quickCreateSessionUseCase;
+    private final DeleteRoomUseCase deleteRoomUseCase;
 
     public RoomController(
             CreateRoomUseCase createSessionUseCase,
@@ -48,13 +51,15 @@ public class RoomController {
             GetRoomByShareCodeUseCase getRoomByShareCodeUseCase,
             ListRoomsUseCase listSessionsUseCase,
             CloseRoomUseCase closeSessionUseCase,
-            QuickCreateRoomUseCase quickCreateSessionUseCase) {
+            QuickCreateRoomUseCase quickCreateSessionUseCase,
+            DeleteRoomUseCase deleteRoomUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.getRoomByShareCodeUseCase = getRoomByShareCodeUseCase;
         this.listSessionsUseCase = listSessionsUseCase;
         this.closeSessionUseCase = closeSessionUseCase;
         this.quickCreateSessionUseCase = quickCreateSessionUseCase;
+        this.deleteRoomUseCase = deleteRoomUseCase;
     }
 
     @PostMapping("/api/v1/rooms")
@@ -112,5 +117,12 @@ public class RoomController {
     @PostMapping("/api/v1/rooms/{roomId}/close")
     public RoomResponse close(@PathVariable UUID roomId) {
         return RoomResponse.from(closeSessionUseCase.execute(RoomId.of(roomId)));
+    }
+
+    /** ルームを配下データ(参加者・固定ペア・試合表)ごと完全に削除する。 */
+    @DeleteMapping("/api/v1/rooms/{roomId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID roomId) {
+        deleteRoomUseCase.execute(RoomId.of(roomId));
     }
 }

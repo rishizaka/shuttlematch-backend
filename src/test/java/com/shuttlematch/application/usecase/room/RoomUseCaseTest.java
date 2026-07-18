@@ -130,6 +130,11 @@ class RoomUseCaseTest {
         }
 
         @Override
+        public void deleteById(RoomId roomId) {
+            store.remove(roomId);
+        }
+
+        @Override
         public Optional<Room> findById(RoomId roomId) {
             return Optional.ofNullable(store.get(roomId));
         }
