@@ -43,7 +43,7 @@ public class ReplanFutureSetsUseCase {
 
         int courtCount = room.courtCount() != null ? room.courtCount() : 1;
         MatchSchedule updated = matchingDomainService.replanFuture(
-                existing, room.activeParticipantIds(), courtCount);
+                existing, room.activeParticipantIds(), courtCount, room.fixedPairs());
 
         matchScheduleRepository.deleteByRoomId(roomId);
         return matchScheduleRepository.save(updated);

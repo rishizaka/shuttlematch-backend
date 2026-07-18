@@ -1,5 +1,6 @@
 package com.shuttlematch.infrastructure.persistence.jpa;
 
+import com.shuttlematch.domain.model.match.Pair;
 import com.shuttlematch.domain.model.room.Participant;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.ParticipantStatus;
@@ -32,12 +33,15 @@ public class RoomRepositoryAdapter implements RoomRepository {
 
     private final RoomJpaRepository roomJpaRepository;
     private final RoomParticipantJpaRepository participantJpaRepository;
+    private final RoomFixedPairJpaRepository fixedPairJpaRepository;
 
     public RoomRepositoryAdapter(
             RoomJpaRepository roomJpaRepository,
-            RoomParticipantJpaRepository participantJpaRepository) {
+            RoomParticipantJpaRepository participantJpaRepository,
+            RoomFixedPairJpaRepository fixedPairJpaRepository) {
         this.roomJpaRepository = roomJpaRepository;
         this.participantJpaRepository = participantJpaRepository;
+        this.fixedPairJpaRepository = fixedPairJpaRepository;
     }
 
     @Override
@@ -56,6 +60,7 @@ public class RoomRepositoryAdapter implements RoomRepository {
         roomJpaRepository.save(entity);
 
         reconcileParticipants(room);
+        reconcileFixedPairs(room);
 
         return findById(room.id()).orElseThrow();
     }
@@ -147,6 +152,47 @@ public class RoomRepositoryAdapter implements RoomRepository {
         }
     }
 
+    private void reconcileFixedPairs(Room room) {
+        UUID roomId = room.id().value();
+        List<RoomFixedPairEntity> existing = fixedPairJpaRepository.findByRoomId(roomId);
+        Map<String, RoomFixedPairEntity> existingByKey = existing.stream()
+                .collect(Collectors.toMap(
+                        e -> pairKey(e.getParticipantA(), e.getParticipantB()), e -> e, (a, b) -> a));
+        Set<String> desired = room.fixedPairs().stream()
+                .map(p -> pairKey(p.player1().value(), p.player2().value()))
+                .collect(Collectors.toSet());
+
+        // 集約から取り除かれた固定ペアを削除
+        List<RoomFixedPairEntity> toDelete = existing.stream()
+                .filter(e -> !desired.contains(pairKey(e.getParticipantA(), e.getParticipantB())))
+                .toList();
+        if (!toDelete.isEmpty()) {
+            fixedPairJpaRepository.deleteAll(toDelete);
+        }
+
+        // 新規の固定ペアを追加(既存はそのまま)
+        for (Pair pair : room.fixedPairs()) {
+            String key = pairKey(pair.player1().value(), pair.player2().value());
+            if (!existingByKey.containsKey(key)) {
+                fixedPairJpaRepository.save(toFixedPairEntity(roomId, pair));
+            }
+        }
+    }
+
+    private String pairKey(UUID a, UUID b) {
+        return a + "_" + b;
+    }
+
+    private RoomFixedPairEntity toFixedPairEntity(UUID roomId, Pair pair) {
+        RoomFixedPairEntity entity = new RoomFixedPairEntity();
+        entity.setId(UUID.randomUUID());
+        entity.setRoomId(roomId);
+        // Pair は player1 < player2 (UUID昇順) に正規化済み
+        entity.setParticipantA(pair.player1().value());
+        entity.setParticipantB(pair.player2().value());
+        return entity;
+    }
+
     @Override
     public Optional<Room> findById(RoomId roomId) {
         return roomJpaRepository.findById(roomId.value())
@@ -169,6 +215,11 @@ public class RoomRepositoryAdapter implements RoomRepository {
                 .findByRoomIdOrderByJoinOrderAsc(entity.getId()).stream()
                 .map(this::toParticipant)
                 .toList();
+        List<Pair> fixedPairs = fixedPairJpaRepository.findByRoomId(entity.getId()).stream()
+                .map(e -> new Pair(
+                        ParticipantId.of(e.getParticipantA()),
+                        ParticipantId.of(e.getParticipantB())))
+                .toList();
         return Room.reconstitute(
                 RoomId.of(entity.getId()),
                 entity.getShareCode(),
@@ -179,7 +230,8 @@ public class RoomRepositoryAdapter implements RoomRepository {
                 entity.getCourtCount(),
                 RoomStatus.valueOf(entity.getStatus()),
                 UserId.of(entity.getCreatedBy()),
-                participants);
+                participants,
+                fixedPairs);
     }
 
     private Participant toParticipant(RoomParticipantEntity entity) {

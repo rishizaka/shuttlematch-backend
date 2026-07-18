@@ -43,7 +43,8 @@ public class AddSetsUseCase {
 
         int courtCount = room.courtCount() != null ? room.courtCount() : 1;
         MatchSchedule updated = matchingDomainService.addSets(
-                existing, room.participantIds(), courtCount, additionalSetCount);
+                existing, room.participantIds(), courtCount, additionalSetCount,
+                room.fixedPairs());
 
         // 既存分の開始時刻もドメインオブジェクトに保持されているため、削除→保存で保たれる。
         matchScheduleRepository.deleteByRoomId(roomId);

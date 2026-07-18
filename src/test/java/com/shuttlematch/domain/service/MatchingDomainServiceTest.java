@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchSchedule;
+import com.shuttlematch.domain.model.match.Pair;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.RoomId;
 import java.util.HashMap;
@@ -76,6 +77,71 @@ class MatchingDomainServiceTest {
         assertTrue(fixed <= trials * 0.02,
                 "休憩ペアが固定ローテーションに陥りすぎ: " + fixed + "/" + trials);
         assertEquals(0, consecutive, "同じ人が連続で休んでいる(連続休み回避が壊れている)");
+    }
+
+    /** 指定セットの、その固定ペアの状態を検証する: 両方出場なら同じチーム、片方だけ出場は不可。 */
+    private void assertFixedPairIntact(MatchSchedule schedule, ParticipantId a, ParticipantId b) {
+        int setCount = schedule.setCount();
+        for (int set = 1; set <= setCount; set++) {
+            final int s = set;
+            List<Match> setMatches = schedule.matches().stream()
+                    .filter(m -> m.setNumber() == s).toList();
+            boolean aIn = setMatches.stream().anyMatch(m -> m.hasParticipant(a));
+            boolean bIn = setMatches.stream().anyMatch(m -> m.hasParticipant(b));
+            assertEquals(aIn, bIn, "固定ペアの片方だけ出場している set=" + s);
+            if (aIn) {
+                boolean sameTeam = setMatches.stream().anyMatch(m ->
+                        (m.pairA().contains(a) && m.pairA().contains(b))
+                        || (m.pairB().contains(a) && m.pairB().contains(b)));
+                assertTrue(sameTeam, "固定ペアが同じチームにいない set=" + s);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("固定ペアは常に同じチームで一緒に出場・休憩する")
+    void fixedPairAlwaysTogetherAndSameTeam() {
+        List<ParticipantId> pool = participants(6);
+        Pair fixed = new Pair(pool.get(1), pool.get(2)); // 2番と3番
+        MatchSchedule schedule = serviceWithSeed(7L)
+                .generate(roomId, pool, 1, 12, List.of(fixed));
+        assertFixedPairIntact(schedule, pool.get(1), pool.get(2));
+    }
+
+    @Test
+    @DisplayName("複数の固定ペアが同時に守られ、出場回数も公平になる")
+    void multipleFixedPairsRespectedAndFair() {
+        List<ParticipantId> pool = participants(8);
+        Pair p1 = new Pair(pool.get(0), pool.get(1));
+        Pair p2 = new Pair(pool.get(4), pool.get(5));
+        MatchSchedule schedule = serviceWithSeed(9L)
+                .generate(roomId, pool, 1, 12, List.of(p1, p2));
+        assertFixedPairIntact(schedule, pool.get(0), pool.get(1));
+        assertFixedPairIntact(schedule, pool.get(4), pool.get(5));
+
+        Map<ParticipantId, Integer> counts = new HashMap<>();
+        pool.forEach(p -> counts.put(p, 0));
+        for (Match m : schedule.matches()) {
+            participantsOf(m).forEach(p -> counts.merge(p, 1, Integer::sum));
+        }
+        int max = counts.values().stream().max(Integer::compareTo).orElseThrow();
+        int min = counts.values().stream().min(Integer::compareTo).orElseThrow();
+        assertTrue(max - min <= 1, "固定ペアありでも出場回数は公平であるべき: max=" + max + ", min=" + min);
+    }
+
+    @Test
+    @DisplayName("全員が固定ペア(自由参加者0)でもペア単位で出場・休憩できる")
+    void allParticipantsInFixedPairs() {
+        List<ParticipantId> pool = participants(6); // 3ペア、1コート=2ペア出場・1ペア休み
+        Pair p1 = new Pair(pool.get(0), pool.get(1));
+        Pair p2 = new Pair(pool.get(2), pool.get(3));
+        Pair p3 = new Pair(pool.get(4), pool.get(5));
+        MatchSchedule schedule = serviceWithSeed(11L)
+                .generate(roomId, pool, 1, 9, List.of(p1, p2, p3));
+        assertEquals(9, schedule.size());
+        assertFixedPairIntact(schedule, pool.get(0), pool.get(1));
+        assertFixedPairIntact(schedule, pool.get(2), pool.get(3));
+        assertFixedPairIntact(schedule, pool.get(4), pool.get(5));
     }
 
     @Test

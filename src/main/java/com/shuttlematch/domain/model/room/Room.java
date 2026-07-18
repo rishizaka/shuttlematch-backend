@@ -1,5 +1,6 @@
 package com.shuttlematch.domain.model.room;
 
+import com.shuttlematch.domain.model.match.Pair;
 import com.shuttlematch.domain.model.user.UserId;
 
 import java.time.OffsetDateTime;
@@ -29,11 +30,13 @@ public class Room {
     private RoomStatus status;
     private final UserId createdBy;
     private final List<Participant> participants;
+    /** 常に同じチームで組む固定ペア(大会前などに運営が設定する)。 */
+    private final List<Pair> fixedPairs;
 
     private Room(
             RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
-            UserId createdBy, List<Participant> participants) {
+            UserId createdBy, List<Participant> participants, List<Pair> fixedPairs) {
         this.id = id;
         this.shareCode = shareCode;
         this.title = title;
@@ -44,6 +47,7 @@ public class Room {
         this.status = status;
         this.createdBy = createdBy;
         this.participants = participants;
+        this.fixedPairs = fixedPairs;
     }
 
     /** 新規作成(受付中で開始)。コート数は任意。 */
@@ -69,16 +73,26 @@ public class Room {
             throw new IllegalArgumentException("コート数は1以上にしてください");
         }
         return new Room(RoomId.newId(), ShareCode.generate(), title, heldAt, location,
-                capacity, courtCount, RoomStatus.OPEN, createdBy, new ArrayList<>());
+                capacity, courtCount, RoomStatus.OPEN, createdBy, new ArrayList<>(),
+                new ArrayList<>());
     }
 
-    /** 永続化層からの復元用。 */
+    /** 永続化層からの復元用(固定ペア無し)。 */
     public static Room reconstitute(
             RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
             UserId createdBy, List<Participant> participants) {
+        return reconstitute(id, shareCode, title, heldAt, location, capacity, courtCount,
+                status, createdBy, participants, List.of());
+    }
+
+    /** 永続化層からの復元用(固定ペアを含む)。 */
+    public static Room reconstitute(
+            RoomId id, String shareCode, String title, OffsetDateTime heldAt,
+            String location, Integer capacity, Integer courtCount, RoomStatus status,
+            UserId createdBy, List<Participant> participants, List<Pair> fixedPairs) {
         return new Room(id, shareCode, title, heldAt, location, capacity, courtCount, status,
-                createdBy, new ArrayList<>(participants));
+                createdBy, new ArrayList<>(participants), new ArrayList<>(fixedPairs));
     }
 
     /** 登録ユーザーを参加させる。重複参加は不可。生成後(途中参加)も可能。 */
@@ -108,7 +122,12 @@ public class Room {
     /** 参加者を削除する。存在しなければ false。生成前のみ可(生成後は早退を使う)。 */
     public boolean removeParticipant(ParticipantId participantId) {
         ensureCanModifyParticipants();
-        return participants.removeIf(p -> p.id().equals(participantId));
+        boolean removed = participants.removeIf(p -> p.id().equals(participantId));
+        if (removed) {
+            // 削除された参加者を含む固定ペアも解除する(相方だけ残さない)。
+            fixedPairs.removeIf(fp -> fp.contains(participantId));
+        }
+        return removed;
     }
 
     /** 参加者を早退にする。履歴は残し、未開始セットの編成対象から外す。存在しなければ false。 */
@@ -187,6 +206,41 @@ public class Room {
         if (capacity != null && participants.size() >= capacity) {
             throw new IllegalArgumentException("定員に達しています");
         }
+    }
+
+    /** 固定ペアを追加する。両者がこのルームの参加者で、どちらも既存の固定ペアに属さないこと。 */
+    public Pair addFixedPair(ParticipantId a, ParticipantId b) {
+        ensureNotClosed();
+        Objects.requireNonNull(a, "a は必須です");
+        Objects.requireNonNull(b, "b は必須です");
+        if (a.equals(b)) {
+            throw new IllegalArgumentException("固定ペアは異なる2名で構成してください");
+        }
+        if (!isParticipant(a) || !isParticipant(b)) {
+            throw new IllegalArgumentException("固定ペアはこのルームの参加者で構成してください");
+        }
+        for (Pair existing : fixedPairs) {
+            if (existing.contains(a) || existing.contains(b)) {
+                throw new IllegalArgumentException("既に固定ペアに含まれている参加者がいます");
+            }
+        }
+        Pair pair = new Pair(a, b);
+        fixedPairs.add(pair);
+        return pair;
+    }
+
+    /** 固定ペアを解除する。存在しなければ false。 */
+    public boolean removeFixedPair(ParticipantId a, ParticipantId b) {
+        ensureNotClosed();
+        return fixedPairs.remove(new Pair(a, b));
+    }
+
+    public List<Pair> fixedPairs() {
+        return List.copyOf(fixedPairs);
+    }
+
+    private boolean isParticipant(ParticipantId id) {
+        return participants.stream().anyMatch(p -> p.id().equals(id));
     }
 
     public List<ParticipantId> participantIds() {

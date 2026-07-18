@@ -43,7 +43,8 @@ public class GenerateMatchesUseCase {
 
         int courtCount = room.courtCount() != null ? room.courtCount() : 1;
         MatchSchedule schedule = matchingDomainService.generate(
-                room.id(), room.activeParticipantIds(), courtCount, command.matchCount());
+                room.id(), room.activeParticipantIds(), courtCount, command.matchCount(),
+                room.fixedPairs());
 
         // 再生成に対応するため既存スケジュールを削除してから保存する
         matchScheduleRepository.deleteByRoomId(room.id());

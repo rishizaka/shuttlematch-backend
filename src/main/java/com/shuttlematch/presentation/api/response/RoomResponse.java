@@ -19,11 +19,15 @@ public record RoomResponse(
         String status,
         String createdBy,
         int participantCount,
-        List<ParticipantResponse> participants) {
+        List<ParticipantResponse> participants,
+        List<FixedPairResponse> fixedPairs) {
 
     public static RoomResponse from(Room room) {
         List<ParticipantResponse> participants = room.participants().stream()
                 .map(ParticipantResponse::from)
+                .toList();
+        List<FixedPairResponse> fixedPairs = room.fixedPairs().stream()
+                .map(FixedPairResponse::from)
                 .toList();
         return new RoomResponse(
                 room.id().value().toString(),
@@ -36,6 +40,7 @@ public record RoomResponse(
                 room.status().name(),
                 room.createdBy().value().toString(),
                 participants.size(),
-                participants);
+                participants,
+                fixedPairs);
     }
 }

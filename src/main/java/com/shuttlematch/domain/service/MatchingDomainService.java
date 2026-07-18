@@ -33,6 +33,10 @@ import java.util.random.RandomGenerator;
  *       同一人物が連続で休みにならないようにする。</li>
  *   <li>それでも同順位ならタイブレーク・ペア分けを Fisher-Yates シャッフルでランダム化する。</li>
  * </ul>
+ * <p>
+ * <b>固定ペア</b>: 事前に「常に同じチームで組む2人」を指定できる。固定ペアは1つの
+ * 「ユニット」として扱われ、常に一緒に出場・休憩し、同じ {@link Pair} に配置される。
+ * 固定ペアが無い場合は各参加者が1人ユニットとなり、従来どおりの個人単位の挙動になる。
  */
 public class MatchingDomainService {
 
@@ -51,14 +55,22 @@ public class MatchingDomainService {
         this.random = Objects.requireNonNull(random, "random は null にできません");
     }
 
+    /** 固定ペア無しで生成する。 */
+    public MatchSchedule generate(
+            RoomId roomId, List<ParticipantId> participants, int courtCount, int setCount) {
+        return generate(roomId, participants, courtCount, setCount, List.of());
+    }
+
     /**
      * 試合を生成する。
      *
      * @param courtCount コート数(1以上)
      * @param setCount   セット数(1以上)
+     * @param fixedPairs 常に同じチームで組む固定ペア(空可)
      */
     public MatchSchedule generate(
-            RoomId roomId, List<ParticipantId> participants, int courtCount, int setCount) {
+            RoomId roomId, List<ParticipantId> participants, int courtCount, int setCount,
+            List<Pair> fixedPairs) {
         Objects.requireNonNull(roomId, "roomId は必須です");
         requireCourtCount(courtCount);
         if (setCount < 1) {
@@ -72,20 +84,29 @@ public class MatchingDomainService {
         Map<ParticipantId, Integer> lastPlayedSet = new HashMap<>();
         pool.forEach(p -> lastPlayedSet.put(p, 0));
 
-        List<Match> matches = buildSets(pool, playCount, lastPlayedSet, courtCount, setCount, 1, 1);
+        List<Match> matches = buildSets(
+                pool, playCount, lastPlayedSet, courtCount, setCount, 1, 1, fixedPairs);
         return new MatchSchedule(roomId, matches);
+    }
+
+    /** 固定ペア無しでセットを追加する。 */
+    public MatchSchedule addSets(
+            MatchSchedule existing, List<ParticipantId> participants,
+            int courtCount, int additionalSetCount) {
+        return addSets(existing, participants, courtCount, additionalSetCount, List.of());
     }
 
     /**
      * 既存スケジュールにセットを追加する。出場回数・セット番号・試合番号は既存の状態から継続し、
      * 追加分も公平な輪番になるようにする。既存の試合(開始時刻を含む)はそのまま保持される。
      *
-     * @param existing          追加元の既存スケジュール
+     * @param existing           追加元の既存スケジュール
      * @param additionalSetCount 追加するセット数(1以上)
+     * @param fixedPairs         常に同じチームで組む固定ペア(空可)
      */
     public MatchSchedule addSets(
             MatchSchedule existing, List<ParticipantId> participants,
-            int courtCount, int additionalSetCount) {
+            int courtCount, int additionalSetCount, List<Pair> fixedPairs) {
         Objects.requireNonNull(existing, "existing は必須です");
         requireCourtCount(courtCount);
         if (additionalSetCount < 1) {
@@ -105,11 +126,17 @@ public class MatchingDomainService {
 
         List<Match> added = buildSets(
                 pool, playCount, lastPlayedSet, courtCount, additionalSetCount,
-                startSetNumber, startMatchNumber);
+                startSetNumber, startMatchNumber, fixedPairs);
 
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
         return new MatchSchedule(existing.roomId(), all);
+    }
+
+    /** 固定ペア無しで未開始セットを再編成する。 */
+    public MatchSchedule replanFuture(
+            MatchSchedule existing, List<ParticipantId> activeParticipants, int courtCount) {
+        return replanFuture(existing, activeParticipants, courtCount, List.of());
     }
 
     /**
@@ -122,12 +149,14 @@ public class MatchingDomainService {
      * </ul>
      * 合計セット数は元のスケジュールと同じに保つ。
      *
-     * @param existing            既存スケジュール
-     * @param activeParticipants  現在の在席者(早退者は含めない)
-     * @param courtCount          セッションの本来のコート数(1以上)
+     * @param existing           既存スケジュール
+     * @param activeParticipants 現在の在席者(早退者は含めない)
+     * @param courtCount         セッションの本来のコート数(1以上)
+     * @param fixedPairs         常に同じチームで組む固定ペア(空可)
      */
     public MatchSchedule replanFuture(
-            MatchSchedule existing, List<ParticipantId> activeParticipants, int courtCount) {
+            MatchSchedule existing, List<ParticipantId> activeParticipants, int courtCount,
+            List<Pair> fixedPairs) {
         Objects.requireNonNull(existing, "existing は必須です");
         Objects.requireNonNull(activeParticipants, "activeParticipants は必須です");
         requireCourtCount(courtCount);
@@ -156,7 +185,7 @@ public class MatchingDomainService {
                 seededLastPlayedSet(pool, committed, maxStartedSet);
         List<Match> future = buildSets(
                 pool, playCount, lastPlayedSet, effectiveCourtCount, futureSetCount,
-                maxStartedSet + 1, maxMatchNumber(committed) + 1);
+                maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs);
 
         List<Match> all = new ArrayList<>(committed);
         all.addAll(future);
@@ -215,47 +244,197 @@ public class MatchingDomainService {
     /**
      * playCount / lastPlayedSet を消費しながら setCount 分のセットを組み立てる。
      * setNumber は startSetNumber から、matchNumber は startMatchNumber から連番で振る。
+     * <p>
+     * 参加者は「ユニット」に分けて扱う。固定ペア(pool に両方居るもの)は2人1組のユニット、
+     * それ以外は1人ユニット。出場者選択・休憩の反復回避はユニット単位で行い、固定ペアが
+     * 常に一緒に出入りし同じ Pair に入るようにする。
      */
     private List<Match> buildSets(
             List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> lastPlayedSet,
-            int courtCount, int setCount, int startSetNumber, int startMatchNumber) {
+            int courtCount, int setCount, int startSetNumber, int startMatchNumber,
+            List<Pair> fixedPairs) {
         int required = PLAYERS_PER_MATCH * courtCount;
-        int restSize = pool.size() - required; // 各セットで休む人数
+        List<List<ParticipantId>> units = buildUnits(pool, fixedPairs);
+        boolean hasRest = pool.size() > required;
+
         List<Match> matches = new ArrayList<>();
         int matchNumber = startMatchNumber;
 
-        // 直近セットの「休んだメンバーの組」を覚えておき、同じ組の反復を避ける。
-        // これがないと、公平性(出場回数)の制約だけでは同じ数人が毎回セットで一緒に休む
-        // カップリングが起き、少人数(例: 6人)で休憩ペアが数通りに固定化してしまう。
+        // 直近セットの「休んだメンバーの組」を覚えておき、同じ組の反復を避ける(カップリング防止)。
         Deque<Set<ParticipantId>> recentRest = new ArrayDeque<>();
-        int restWindow = Math.max(1, pool.size() - 1);
+        int restWindow = Math.max(1, units.size() - 1);
 
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
-            List<ParticipantId> selected = pickLeastPlayed(pool, playCount, lastPlayedSet, required);
-            if (restSize > 0) {
-                selected = avoidRepeatedRest(
-                        pool, selected, playCount, lastPlayedSet, setNumber, recentRest);
-                Set<ParticipantId> rest = new HashSet<>(pool);
-                rest.removeAll(selected);
+            List<List<ParticipantId>> selectedUnits =
+                    pickUnits(units, playCount, lastPlayedSet, required);
+            if (hasRest) {
+                selectedUnits = avoidRepeatedRest(
+                        units, selectedUnits, playCount, lastPlayedSet, setNumber, recentRest);
+                Set<ParticipantId> rest = restMembers(units, selectedUnits);
                 recentRest.addLast(rest);
                 while (recentRest.size() > restWindow) recentRest.removeFirst();
             }
-            fisherYatesShuffle(selected); // セット内のコート割り・ペア分けをランダム化
 
+            List<Pair> pairs = buildPairs(selectedUnits); // 固定ペアはそのまま、自由参加者は2人ずつ
+            fisherYatesShuffle(pairs); // コート割り・pairA/pairB をランダム化
             for (int court = 1; court <= courtCount; court++) {
-                int base = (court - 1) * PLAYERS_PER_MATCH;
-                Pair pairA = new Pair(selected.get(base), selected.get(base + 1));
-                Pair pairB = new Pair(selected.get(base + 2), selected.get(base + 3));
+                Pair pairA = pairs.get((court - 1) * 2);
+                Pair pairB = pairs.get((court - 1) * 2 + 1);
                 matches.add(Match.of(MatchNumber.of(matchNumber++), setNumber, court, pairA, pairB));
             }
-            for (ParticipantId p : selected) {
-                playCount.merge(p, 1, Integer::sum);
-                lastPlayedSet.put(p, setNumber); // 出場したセットを記録(休みの連続長の判定に使う)
+
+            for (List<ParticipantId> unit : selectedUnits) {
+                for (ParticipantId p : unit) {
+                    playCount.merge(p, 1, Integer::sum);
+                    lastPlayedSet.put(p, setNumber); // 出場したセットを記録
+                }
             }
         }
         return matches;
+    }
+
+    /**
+     * 参加者を「ユニット」に分ける。pool に両方が居る固定ペアは2人ユニット、
+     * それ以外は1人ユニット。1人が複数ペアに属さないよう、先に現れたペアを優先する。
+     */
+    private List<List<ParticipantId>> buildUnits(List<ParticipantId> pool, List<Pair> fixedPairs) {
+        Set<ParticipantId> poolSet = new HashSet<>(pool);
+        List<List<ParticipantId>> units = new ArrayList<>();
+        Set<ParticipantId> paired = new HashSet<>();
+        for (Pair p : fixedPairs) {
+            if (poolSet.contains(p.player1()) && poolSet.contains(p.player2())
+                    && !paired.contains(p.player1()) && !paired.contains(p.player2())) {
+                units.add(List.of(p.player1(), p.player2()));
+                paired.add(p.player1());
+                paired.add(p.player2());
+            }
+        }
+        for (ParticipantId id : pool) {
+            if (!paired.contains(id)) units.add(List.of(id));
+        }
+        return units;
+    }
+
+    /**
+     * 出場するユニットを選ぶ。優先度は
+     * (1) 出場回数が少ない順、(2) 最後に出場したセットが古い順、(3) ランダム。
+     * ユニットの合計人数がちょうど {@code required} になるよう選ぶ。
+     * 端数(残り1人)が出た場合は、自由参加者1人を外して固定ペア1組を入れて帳尻を合わせる。
+     */
+    private List<List<ParticipantId>> pickUnits(
+            List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> lastPlayedSet, int required) {
+        List<List<ParticipantId>> candidates = new ArrayList<>(units);
+        fisherYatesShuffle(candidates);
+        candidates.sort(unitOrder(playCount, lastPlayedSet));
+
+        List<List<ParticipantId>> selected = new ArrayList<>();
+        List<List<ParticipantId>> skipped = new ArrayList<>();
+        int remaining = required;
+        for (List<ParticipantId> unit : candidates) {
+            if (remaining >= unit.size()) {
+                selected.add(unit);
+                remaining -= unit.size();
+            } else {
+                skipped.add(unit);
+            }
+        }
+
+        // 固定ペア(2人)ばかりで枠が1余った場合: 自由1人を外し、未出場の固定ペアを入れる。
+        if (remaining == 1) {
+            List<ParticipantId> freeToDrop = null;
+            for (int k = selected.size() - 1; k >= 0; k--) {
+                if (selected.get(k).size() == 1) { freeToDrop = selected.get(k); break; }
+            }
+            List<ParticipantId> pairToAdd = null;
+            for (List<ParticipantId> unit : skipped) {
+                if (unit.size() == 2) { pairToAdd = unit; break; }
+            }
+            if (freeToDrop != null && pairToAdd != null) {
+                selected.remove(freeToDrop);
+                selected.add(pairToAdd);
+            }
+        }
+        return selected;
+    }
+
+    private Comparator<List<ParticipantId>> unitOrder(
+            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> lastPlayedSet) {
+        // 固定ペアの2人は常に一緒に出入りするので代表(先頭)の値で判定してよい。
+        return Comparator.comparingInt((List<ParticipantId> u) -> playCount.get(u.get(0)))
+                .thenComparingInt(u -> lastPlayedSet.get(u.get(0)));
+    }
+
+    /** 出場ユニットを Pair のリストにする。固定ペアはそのまま、自由参加者はシャッフルして2人ずつ。 */
+    private List<Pair> buildPairs(List<List<ParticipantId>> selectedUnits) {
+        List<Pair> pairs = new ArrayList<>();
+        List<ParticipantId> frees = new ArrayList<>();
+        for (List<ParticipantId> unit : selectedUnits) {
+            if (unit.size() == 2) {
+                pairs.add(new Pair(unit.get(0), unit.get(1)));
+            } else {
+                frees.add(unit.get(0));
+            }
+        }
+        fisherYatesShuffle(frees);
+        for (int k = 0; k + 1 < frees.size(); k += 2) {
+            pairs.add(new Pair(frees.get(k), frees.get(k + 1)));
+        }
+        return pairs;
+    }
+
+    /** 出場ユニットに含まれない(=休む)メンバーの集合。 */
+    private Set<ParticipantId> restMembers(
+            List<List<ParticipantId>> units, List<List<ParticipantId>> selectedUnits) {
+        Set<ParticipantId> rest = new HashSet<>();
+        for (List<ParticipantId> unit : units) rest.addAll(unit);
+        for (List<ParticipantId> unit : selectedUnits) unit.forEach(rest::remove);
+        return rest;
+    }
+
+    /**
+     * 休憩ユニットの組が直近セットと同じにならないよう、必要なら出場ユニットと入れ替える。
+     * 入れ替えは公平性・連続休み回避を壊さない範囲だけで行う: 休む予定 r と出場予定 s を、
+     * 同じサイズ(人数保存)・同じ出場回数・s が直前セットで休んでいない、ときにだけ交換する。
+     * ユニット単位で扱うので固定ペアは崩れない。
+     */
+    private List<List<ParticipantId>> avoidRepeatedRest(
+            List<List<ParticipantId>> units, List<List<ParticipantId>> selectedUnits,
+            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> lastPlayedSet,
+            int setNumber, Deque<Set<ParticipantId>> recentRest) {
+        Set<ParticipantId> rest = restMembers(units, selectedUnits);
+        if (!recentRest.contains(rest)) return selectedUnits;
+
+        List<List<ParticipantId>> restingUnits = new ArrayList<>();
+        for (List<ParticipantId> unit : units) {
+            if (!selectedUnits.contains(unit)) restingUnits.add(unit);
+        }
+        fisherYatesShuffle(restingUnits);
+        List<List<ParticipantId>> playingUnits = new ArrayList<>(selectedUnits);
+        fisherYatesShuffle(playingUnits);
+
+        for (List<ParticipantId> r : restingUnits) {
+            for (List<ParticipantId> s : playingUnits) {
+                if (r.size() != s.size()) continue; // 人数を保つため同サイズのみ
+                boolean sameCount = playCount.get(r.get(0)).equals(playCount.get(s.get(0)));
+                // s は直前セットに出ている(lastPlayed==setNumber-1)ときだけ休ませてよい。
+                boolean sNotConsecutive = lastPlayedSet.get(s.get(0)) >= setNumber - 1;
+                if (sameCount && sNotConsecutive) {
+                    Set<ParticipantId> candidateRest = new HashSet<>(rest);
+                    r.forEach(candidateRest::remove);
+                    candidateRest.addAll(s);
+                    if (!recentRest.contains(candidateRest)) {
+                        List<List<ParticipantId>> result = new ArrayList<>(selectedUnits);
+                        result.remove(s);
+                        result.add(r);
+                        return result;
+                    }
+                }
+            }
+        }
+        return selectedUnits;
     }
 
     private void requireCourtCount(int courtCount) {
@@ -281,65 +460,6 @@ public class MatchingDomainService {
         return List.of(
                 match.pairA().player1(), match.pairA().player2(),
                 match.pairB().player1(), match.pairB().player2());
-    }
-
-    /**
-     * 出場者 n 名を選ぶ。優先度は
-     * (1) 出場回数が少ない順(公平性)、(2) 最後に出場したセットが古い順(＝長く休んでいる人・連続休み回避)、
-     * (3) ランダム(先頭シャッフルによる最終タイブレーク)。
-     */
-    private List<ParticipantId> pickLeastPlayed(
-            List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
-            Map<ParticipantId, Integer> lastPlayedSet, int n) {
-        List<ParticipantId> candidates = new ArrayList<>(pool);
-        fisherYatesShuffle(candidates);
-        candidates.sort(Comparator.comparingInt((ParticipantId p) -> playCount.get(p))
-                .thenComparingInt(p -> lastPlayedSet.get(p)));
-        return new ArrayList<>(candidates.subList(0, n));
-    }
-
-    /**
-     * 休憩メンバーの組が直近セットと同じにならないよう、必要なら出場者と1名入れ替える。
-     * <p>
-     * 入れ替えは公平性・連続休み回避を壊さない範囲だけで行う: 休む予定の r と出場予定の s を、
-     * 両者の出場回数が同じで、かつ s が直前セットで休んでいない(入れ替えても連続休みにならない)
-     * ときにだけ交換する。これで休憩ペアのカップリングが崩れ、少人数でも休みの組が多様になる。
-     *
-     * @return 入れ替え後の出場者リスト(避けられない場合は入力のまま)
-     */
-    private List<ParticipantId> avoidRepeatedRest(
-            List<ParticipantId> pool, List<ParticipantId> selected,
-            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> lastPlayedSet,
-            int setNumber, Deque<Set<ParticipantId>> recentRest) {
-        Set<ParticipantId> rest = new HashSet<>(pool);
-        rest.removeAll(selected);
-        if (!recentRest.contains(rest)) return selected;
-
-        // r(休む予定) と s(出る予定) を入れ替えた休憩組が直近に無ければ採用する。
-        // 候補はランダム順に走査し、崩し方が毎回同じにならないようにする。
-        List<ParticipantId> restList = new ArrayList<>(rest);
-        fisherYatesShuffle(restList);
-        List<ParticipantId> playingList = new ArrayList<>(selected);
-        fisherYatesShuffle(playingList);
-        for (ParticipantId r : restList) {
-            for (ParticipantId s : playingList) {
-                boolean sameCount = playCount.get(r).equals(playCount.get(s));
-                // s は直前セットに出ている(lastPlayed==setNumber-1)ときだけ休ませてよい。
-                boolean sNotConsecutive = lastPlayedSet.get(s) >= setNumber - 1;
-                if (sameCount && sNotConsecutive) {
-                    Set<ParticipantId> candidateRest = new HashSet<>(rest);
-                    candidateRest.remove(r);
-                    candidateRest.add(s);
-                    if (!recentRest.contains(candidateRest)) {
-                        List<ParticipantId> result = new ArrayList<>(selected);
-                        result.remove(s);
-                        result.add(r);
-                        return result;
-                    }
-                }
-            }
-        }
-        return selected;
     }
 
     private void fisherYatesShuffle(List<?> list) {
