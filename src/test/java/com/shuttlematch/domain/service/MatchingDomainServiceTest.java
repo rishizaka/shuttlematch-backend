@@ -334,6 +334,24 @@ class MatchingDomainServiceTest {
     }
 
     @Test
+    @DisplayName("セット追加後も境界をまたいで流れを引き継ぐ(連続休みなし・連続出場も抑制)")
+    void addSetsCarriesFlowAcrossBoundary() {
+        List<ParticipantId> pool = participants(10);
+        for (long seed = 0; seed < 10; seed++) {
+            MatchingDomainService svc = serviceWithSeed(seed);
+            MatchSchedule base = svc.generate(roomId, pool, 2, 10);
+            MatchSchedule ext = svc.addSets(base, pool, 2, 6); // 10 + 6 = 16 セット
+            assertEquals(16, ext.setCount());
+            // 連続出場数の引き継ぎ: 境界(第11セット)を含めて連続休みが起きない。
+            assertEquals(0, countConsecutiveRests(restingPerSet(ext, pool)),
+                    "seed=" + seed + " 追加後に連続休みが発生");
+            // 追加分でも連続出場が長くならない(一括生成と同水準)。
+            assertTrue(maxConsecutivePlays(ext, pool) <= 6,
+                    "seed=" + seed + " 追加後に連続出場が長すぎる");
+        }
+    }
+
+    @Test
     @DisplayName("同じシードなら同じスケジュールを生成する(決定的)")
     void deterministicWithSameSeed() {
         List<ParticipantId> pool = participants(6);

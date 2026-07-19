@@ -92,7 +92,7 @@ public class MatchingDomainService {
 
         List<Match> matches = buildSets(
                 pool, playCount, lastPlayedSet, consecutivePlays,
-                courtCount, setCount, 1, 1, fixedPairs);
+                courtCount, setCount, 1, 1, fixedPairs, List.of());
         return new MatchSchedule(roomId, matches);
     }
 
@@ -136,7 +136,8 @@ public class MatchingDomainService {
 
         List<Match> added = buildSets(
                 pool, playCount, lastPlayedSet, consecutivePlays, courtCount, additionalSetCount,
-                startSetNumber, startMatchNumber, fixedPairs);
+                startSetNumber, startMatchNumber, fixedPairs,
+                restGroupsOf(pool, existing.matches()));
 
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
@@ -197,7 +198,8 @@ public class MatchingDomainService {
                 seededConsecutivePlays(pool, committed, maxStartedSet);
         List<Match> future = buildSets(
                 pool, playCount, lastPlayedSet, consecutivePlays, effectiveCourtCount, futureSetCount,
-                maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs);
+                maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs,
+                restGroupsOf(pool, committed));
 
         List<Match> all = new ArrayList<>(committed);
         all.addAll(future);
@@ -282,6 +284,30 @@ public class MatchingDomainService {
     }
 
     /**
+     * 参照試合から各セットの「休み(現プールに居るが出場していない人)の組」をセット順に返す。
+     * セット追加・再編成のときに休みグループ多様化の履歴を引き継ぐのに使う。
+     */
+    private List<Set<ParticipantId>> restGroupsOf(
+            List<ParticipantId> pool, List<Match> sourceMatches) {
+        Map<Integer, Set<ParticipantId>> playingBySet = new HashMap<>();
+        for (Match m : sourceMatches) {
+            playingBySet
+                    .computeIfAbsent(m.setNumber(), k -> new HashSet<>())
+                    .addAll(participantsOf(m));
+        }
+        Set<ParticipantId> poolSet = new HashSet<>(pool);
+        List<Integer> sets = new ArrayList<>(playingBySet.keySet());
+        Collections.sort(sets);
+        List<Set<ParticipantId>> result = new ArrayList<>();
+        for (int s : sets) {
+            Set<ParticipantId> rest = new HashSet<>(poolSet);
+            rest.removeAll(playingBySet.get(s));
+            result.add(rest);
+        }
+        return result;
+    }
+
+    /**
      * playCount / lastPlayedSet を消費しながら setCount 分のセットを組み立てる。
      * setNumber は startSetNumber から、matchNumber は startMatchNumber から連番で振る。
      * <p>
@@ -294,7 +320,7 @@ public class MatchingDomainService {
             Map<ParticipantId, Integer> lastPlayedSet,
             Map<ParticipantId, Integer> consecutivePlays,
             int courtCount, int setCount, int startSetNumber, int startMatchNumber,
-            List<Pair> fixedPairs) {
+            List<Pair> fixedPairs, List<Set<ParticipantId>> seedRecentRest) {
         int required = PLAYERS_PER_MATCH * courtCount;
         List<List<ParticipantId>> units = buildUnits(pool, fixedPairs);
         boolean hasRest = pool.size() > required;
@@ -305,6 +331,12 @@ public class MatchingDomainService {
         // 直近セットの「休んだメンバーの組」を覚えておき、同じ組の反復を避ける(カップリング防止)。
         Deque<Set<ParticipantId>> recentRest = new ArrayDeque<>();
         int restWindow = Math.max(1, units.size() - 1);
+        // セット追加・再編成のときは、確定済みセットの直近の休みグループ履歴を引き継ぐ。
+        // これで境界をまたいでも同じ組の反復回避(多様化)が継続する。
+        int seedFrom = Math.max(0, seedRecentRest.size() - restWindow);
+        for (int k = seedFrom; k < seedRecentRest.size(); k++) {
+            recentRest.addLast(seedRecentRest.get(k));
+        }
 
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
