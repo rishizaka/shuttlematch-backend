@@ -299,6 +299,40 @@ class MatchingDomainServiceTest {
         }
     }
 
+    /** 各参加者の「最大連続出場セット数」のうち、全参加者を通じた最大値。 */
+    private int maxConsecutivePlays(MatchSchedule schedule, List<ParticipantId> pool) {
+        List<Set<ParticipantId>> resting = restingPerSet(schedule, pool);
+        int overall = 0;
+        for (ParticipantId p : pool) {
+            int cur = 0;
+            int mx = 0;
+            for (Set<ParticipantId> rest : resting) {
+                if (rest.contains(p)) {
+                    cur = 0;
+                } else {
+                    cur++;
+                    mx = Math.max(mx, cur);
+                }
+            }
+            overall = Math.max(overall, mx);
+        }
+        return overall;
+    }
+
+    @Test
+    @DisplayName("休みが取れる構成では長い連続出場を避ける(10人2コートで連続出場は6以下)・公平性と連続休みなしも維持")
+    void limitsConsecutivePlaysWhenRestAvailable() {
+        List<ParticipantId> pool = participants(10);
+        for (long seed = 0; seed < 20; seed++) {
+            MatchSchedule schedule = serviceWithSeed(seed).generate(roomId, pool, 2, 15);
+            int maxStreak = maxConsecutivePlays(schedule, pool);
+            // 毎セット2人しか休めない構成でも、連続出場が 6 を超えないこと(従来は 7〜8 に達していた)。
+            assertTrue(maxStreak <= 6, "seed=" + seed + " で連続出場が長すぎる: " + maxStreak);
+            long consecRest = countConsecutiveRests(restingPerSet(schedule, pool));
+            assertEquals(0, consecRest, "seed=" + seed + " で連続休みが発生");
+        }
+    }
+
     @Test
     @DisplayName("同じシードなら同じスケジュールを生成する(決定的)")
     void deterministicWithSameSeed() {

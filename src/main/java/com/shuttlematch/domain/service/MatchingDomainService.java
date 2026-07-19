@@ -28,9 +28,11 @@ import java.util.random.RandomGenerator;
  * コート数とセット数に応じて試合を生成する。1セットはコート数分の試合を持ち、
  * 各コートで4名が同時にプレーする(同じ人が同じセット内で2コートに出ることはない)。
  * <ul>
- *   <li>各セットの出場者は「出場回数が少ない順」に 4×コート数 名を選ぶ(公平な輪番)。</li>
- *   <li>出場回数が同じなら「最後に出場したセットが古い順」(＝長く休んでいる人)を優先し、
- *       同一人物が連続で休みにならないようにする。</li>
+ *   <li>各セットの出場者は「出場回数が少ない順」に 4×コート数 名を選ぶ(公平な輪番)。
+ *       出場回数の差は常に最大1に保たれる。</li>
+ *   <li>出場回数が同じなら「連続出場が少ない順」に出場させる(＝長く連続でコートに入って
+ *       いる人を優先して休ませる)。身体ケアのため、公平性を保ったまま長い連続出場を避ける。
+ *       直前に休んだ人は連続0で優先出場になるので、同一人物が連続で休みにもならない。</li>
  *   <li>それでも同順位ならタイブレーク・ペア分けを Fisher-Yates シャッフルでランダム化する。</li>
  * </ul>
  * <p>
@@ -83,9 +85,14 @@ public class MatchingDomainService {
         // 0 = まだ一度も出場していない(全員同条件でスタート)。
         Map<ParticipantId, Integer> lastPlayedSet = new HashMap<>();
         pool.forEach(p -> lastPlayedSet.put(p, 0));
+        // 連続出場数(何セット連続でコートに入っているか)。休むと0にリセット。
+        // 身体ケアのため、公平性を保ちつつ長い連続出場を避けるのに使う。
+        Map<ParticipantId, Integer> consecutivePlays = new HashMap<>();
+        pool.forEach(p -> consecutivePlays.put(p, 0));
 
         List<Match> matches = buildSets(
-                pool, playCount, lastPlayedSet, courtCount, setCount, 1, 1, fixedPairs);
+                pool, playCount, lastPlayedSet, consecutivePlays,
+                courtCount, setCount, 1, 1, fixedPairs);
         return new MatchSchedule(roomId, matches);
     }
 
@@ -120,12 +127,15 @@ public class MatchingDomainService {
         // 「最後に出場したセット」も引き継ぐ。連続休み回避が既存セットをまたいで効くようにする。
         Map<ParticipantId, Integer> lastPlayedSet =
                 seededLastPlayedSet(pool, existing.matches(), existing.setCount());
+        // 連続出場数も引き継ぐ(連続出場の抑制が既存セットをまたいで効くようにする)。
+        Map<ParticipantId, Integer> consecutivePlays =
+                seededConsecutivePlays(pool, existing.matches(), existing.setCount());
 
         int startSetNumber = existing.setCount() + 1;
         int startMatchNumber = maxMatchNumber(existing.matches()) + 1;
 
         List<Match> added = buildSets(
-                pool, playCount, lastPlayedSet, courtCount, additionalSetCount,
+                pool, playCount, lastPlayedSet, consecutivePlays, courtCount, additionalSetCount,
                 startSetNumber, startMatchNumber, fixedPairs);
 
         List<Match> all = new ArrayList<>(existing.matches());
@@ -183,8 +193,10 @@ public class MatchingDomainService {
         Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, committed);
         Map<ParticipantId, Integer> lastPlayedSet =
                 seededLastPlayedSet(pool, committed, maxStartedSet);
+        Map<ParticipantId, Integer> consecutivePlays =
+                seededConsecutivePlays(pool, committed, maxStartedSet);
         List<Match> future = buildSets(
-                pool, playCount, lastPlayedSet, effectiveCourtCount, futureSetCount,
+                pool, playCount, lastPlayedSet, consecutivePlays, effectiveCourtCount, futureSetCount,
                 maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs);
 
         List<Match> all = new ArrayList<>(committed);
@@ -237,6 +249,34 @@ public class MatchingDomainService {
         return result;
     }
 
+    /**
+     * 参照試合から各参加者の「直近の連続出場数」を集計する({@code lastSet} まで遡り、
+     * 出場が途切れる直前までの連続数)。連続出場の抑制を既存セットをまたいで効かせるのに使う。
+     * プールに居るが未出場の参加者は 0(連続なし)。
+     */
+    private Map<ParticipantId, Integer> seededConsecutivePlays(
+            List<ParticipantId> pool, List<Match> sourceMatches, int lastSet) {
+        Map<Integer, Set<ParticipantId>> playersBySet = new HashMap<>();
+        for (Match m : sourceMatches) {
+            playersBySet
+                    .computeIfAbsent(m.setNumber(), k -> new HashSet<>())
+                    .addAll(participantsOf(m));
+        }
+        Map<ParticipantId, Integer> streak = new HashMap<>();
+        for (ParticipantId p : pool) {
+            int s = 0;
+            for (int set = lastSet; set >= 1; set--) {
+                if (playersBySet.getOrDefault(set, Set.of()).contains(p)) {
+                    s++;
+                } else {
+                    break;
+                }
+            }
+            streak.put(p, s);
+        }
+        return streak;
+    }
+
     private int maxMatchNumber(List<Match> matches) {
         return matches.stream().mapToInt(m -> m.matchNumber().value()).max().orElse(0);
     }
@@ -252,6 +292,7 @@ public class MatchingDomainService {
     private List<Match> buildSets(
             List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> lastPlayedSet,
+            Map<ParticipantId, Integer> consecutivePlays,
             int courtCount, int setCount, int startSetNumber, int startMatchNumber,
             List<Pair> fixedPairs) {
         int required = PLAYERS_PER_MATCH * courtCount;
@@ -268,7 +309,7 @@ public class MatchingDomainService {
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
             List<List<ParticipantId>> selectedUnits =
-                    pickUnits(units, playCount, lastPlayedSet, required);
+                    pickUnits(units, playCount, lastPlayedSet, consecutivePlays, required);
             if (hasRest) {
                 selectedUnits = avoidRepeatedRest(
                         units, selectedUnits, playCount, lastPlayedSet, setNumber, recentRest);
@@ -285,11 +326,18 @@ public class MatchingDomainService {
                 matches.add(Match.of(MatchNumber.of(matchNumber++), setNumber, court, pairA, pairB));
             }
 
+            Set<ParticipantId> playing = new HashSet<>();
             for (List<ParticipantId> unit : selectedUnits) {
                 for (ParticipantId p : unit) {
                     playCount.merge(p, 1, Integer::sum);
                     lastPlayedSet.put(p, setNumber); // 出場したセットを記録
+                    consecutivePlays.merge(p, 1, Integer::sum); // 連続出場を+1
+                    playing.add(p);
                 }
+            }
+            // 休んだ人は連続出場をリセット。
+            for (ParticipantId p : pool) {
+                if (!playing.contains(p)) consecutivePlays.put(p, 0);
             }
         }
         return matches;
@@ -325,10 +373,11 @@ public class MatchingDomainService {
      */
     private List<List<ParticipantId>> pickUnits(
             List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
-            Map<ParticipantId, Integer> lastPlayedSet, int required) {
+            Map<ParticipantId, Integer> lastPlayedSet,
+            Map<ParticipantId, Integer> consecutivePlays, int required) {
         List<List<ParticipantId>> candidates = new ArrayList<>(units);
         fisherYatesShuffle(candidates);
-        candidates.sort(unitOrder(playCount, lastPlayedSet));
+        candidates.sort(unitOrder(playCount, consecutivePlays));
 
         List<List<ParticipantId>> selected = new ArrayList<>();
         List<List<ParticipantId>> skipped = new ArrayList<>();
@@ -361,10 +410,14 @@ public class MatchingDomainService {
     }
 
     private Comparator<List<ParticipantId>> unitOrder(
-            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> lastPlayedSet) {
-        // 固定ペアの2人は常に一緒に出入りするので代表(先頭)の値で判定してよい。
+            Map<ParticipantId, Integer> playCount, Map<ParticipantId, Integer> consecutivePlays) {
+        // 出場優先度(前ほど出場・後ほど休憩)。固定ペアの2人は常に一緒に出入りするので
+        // 代表(先頭)の値で判定してよい。
+        // (1) 出場回数が少ない順 … 公平性を最優先(出場回数の差は最大1に保たれる)。
+        // (2) 連続出場が少ない順 … 同じ出場回数なら、長く連続出場している人を後ろ=休憩に回す。
+        //     直前に休んだ人は連続0で前=出場になるため、連続休みも同時に避けられる。
         return Comparator.comparingInt((List<ParticipantId> u) -> playCount.get(u.get(0)))
-                .thenComparingInt(u -> lastPlayedSet.get(u.get(0)));
+                .thenComparingInt(u -> consecutivePlays.get(u.get(0)));
     }
 
     /** 出場ユニットを Pair のリストにする。固定ペアはそのまま、自由参加者はシャッフルして2人ずつ。 */
