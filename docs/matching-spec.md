@@ -234,9 +234,25 @@ ShuttleMatch のダブルス試合を自動生成する中核ロジックの仕�
    8人2コート＝休みゼロ・固定ペアあり）を横断する。
 4. 追加・再編成は `POST /rooms/{id}/matches/sets`・`/replan` を挟んで P10〜P12 を確認。
 
+### 10.4 QA自動スクリプト
+`scripts/qa_matching.py` が本章の P1〜P12 を複数構成で自動検証しレポートを出力する
+（稼働中の backend API を叩く）。
+
+```bash
+python3 scripts/qa_matching.py                              # localhost:8080
+python3 scripts/qa_matching.py --base http://3.113.92.223:8080   # 本番
+python3 scripts/qa_matching.py --trials 5                   # 性質ベースの試行回数
+```
+
+- 検証構成: 10人2コート／12人2コート／6人1コート／8人2コート(休みゼロ)／固定ペア。
+- 休みゼロ構成では P5/P6/P7 を自動 SKIP（第8章の非保証に対応）。
+- P8(決定性)は API でシード固定不可のため SKIP（下記 Java 単体テストで担保）。
+- すべて PASS なら終了コード 0、FAIL があれば 1。新しい性質を足すときは本スクリプトと
+  下記テストの両方に追加する。
+
 > 参考: 既存の性質ベーステストは
 > `src/test/java/com/shuttlematch/domain/service/MatchingDomainServiceTest.java`。
-> P4〜P10 に対応するテストが実装済み（新しい性質を追加する際はここに足す）。
+> P4〜P11 に対応するテストが実装済み（新しい性質を追加する際はここに足す）。
 
 ---
 
