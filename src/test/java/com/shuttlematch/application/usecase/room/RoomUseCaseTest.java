@@ -27,6 +27,7 @@ class RoomUseCaseTest {
     private AddParticipantUseCase addParticipantUseCase;
     private RemoveParticipantUseCase removeParticipantUseCase;
     private GetRoomUseCase getRoomUseCase;
+    private JoinRoomUseCase joinRoomUseCase;
 
     @BeforeEach
     void setUp() {
@@ -35,6 +36,7 @@ class RoomUseCaseTest {
         addParticipantUseCase = new AddParticipantUseCase(roomRepository);
         removeParticipantUseCase = new RemoveParticipantUseCase(roomRepository);
         getRoomUseCase = new GetRoomUseCase(roomRepository);
+        joinRoomUseCase = new JoinRoomUseCase(roomRepository);
     }
 
     private CreateRoomCommand createCommand() {
@@ -48,6 +50,33 @@ class RoomUseCaseTest {
     void createsSession() {
         Room created = createSessionUseCase.execute(createCommand());
         assertThat(roomRepository.findById(created.id())).isPresent();
+    }
+
+    @Test
+    @DisplayName("自己参加(join)で名前付きの参加者が追加され、本人IDが返る")
+    void joinAddsNamedParticipant() {
+        Room room = createSessionUseCase.execute(createCommand());
+
+        JoinRoomUseCase.Result result = joinRoomUseCase.execute(room.id(), "たろう");
+
+        assertThat(result.joinedId()).isNotNull();
+        assertThat(result.room().participants())
+                .anyMatch(p -> p.id().equals(result.joinedId()) && "たろう".equals(p.guestName()));
+    }
+
+    @Test
+    @DisplayName("名前が空の自己参加は例外")
+    void joinRequiresName() {
+        Room room = createSessionUseCase.execute(createCommand());
+        assertThatThrownBy(() -> joinRoomUseCase.execute(room.id(), "   "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("存在しないルームへの参加は ResourceNotFound")
+    void joinRoomNotFound() {
+        assertThatThrownBy(() -> joinRoomUseCase.execute(RoomId.newId(), "たろう"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test

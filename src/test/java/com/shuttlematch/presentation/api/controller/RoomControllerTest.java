@@ -48,6 +48,9 @@ class RoomControllerTest {
     private com.shuttlematch.application.usecase.room.AddParticipantUseCase addParticipantUseCase;
 
     @MockitoBean
+    private com.shuttlematch.application.usecase.room.JoinRoomUseCase joinRoomUseCase;
+
+    @MockitoBean
     private com.shuttlematch.application.usecase.room.RemoveParticipantUseCase removeParticipantUseCase;
 
     @MockitoBean

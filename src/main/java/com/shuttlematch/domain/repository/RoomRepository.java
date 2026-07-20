@@ -1,5 +1,6 @@
 package com.shuttlematch.domain.repository;
 
+import com.shuttlematch.domain.model.room.Participant;
 import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.room.RoomStatus;
@@ -15,6 +16,20 @@ import java.util.Optional;
 public interface RoomRepository {
 
     Room save(Room room);
+
+    /**
+     * 参加者を1名だけ追記する(集約全体の同期をせず、その1行だけを INSERT する)。
+     * <p>
+     * {@link #save(Room)} は集約全体を DB と同期し、ロード時点に無い参加者を削除するため、
+     * 複数人が同時に参加すると互いの参加を消してしまう。自己参加(join)のように「追記だけ」で
+     * 済む操作はこちらを使い、同時実行でも他者を消さないようにする。番号(並び順)は
+     * 永続化層の連番で採番される。
+     * <p>
+     * デフォルト実装は集約経由(単一スレッド前提のテスト用フェイク向け)。JPA 実装は直接 INSERT する。
+     */
+    default void insertParticipant(RoomId roomId, Participant participant) {
+        findById(roomId).ifPresent(this::save);
+    }
 
     /**
      * ルームを削除する。配下の参加者・固定ペア・試合表は DB のカスケードで一緒に削除される。

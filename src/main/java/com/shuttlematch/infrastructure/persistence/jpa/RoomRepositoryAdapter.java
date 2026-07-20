@@ -194,6 +194,14 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     @Override
+    public void insertParticipant(RoomId roomId, Participant participant) {
+        // 集約全体を reconcile せず、この参加者1行だけを INSERT する。
+        // join_order(bigserial)が原子的に採番されるため、同時参加でも重複・欠番・
+        // 他者の消失が起きない。
+        participantJpaRepository.save(toEntity(roomId.value(), participant));
+    }
+
+    @Override
     public void deleteById(RoomId roomId) {
         // rooms 行を削除すると room_participants / room_fixed_pairs / match_schedules(→matches)
         // は DB の ON DELETE CASCADE で一緒に削除される。
