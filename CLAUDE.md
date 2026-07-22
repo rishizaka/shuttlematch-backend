@@ -59,3 +59,32 @@ ssh -i "$KEY" ec2-user@$HOST '
 - **ロールバック**: `ssh ... 'cd ~; cp app.jar.bak app.jar; sudo systemctl restart shuttlematch'`
 - README 追記などアプリの挙動が変わらない変更のときは、backend の再デプロイは不要。
 - Flyway マイグレーションはアプリ起動時に自動適用される（新しい `V*.sql` を含む jar をデプロイすれば反映）。
+
+## Push 通知（モバイル向け・2026-07-22 導入）
+
+モバイルアプリ（`../shuttlematch-mobile`）へ「セット開始」「ルーム終了」を通知する。
+
+**宛先はユーザーではなく「ルーム購読」で持つ。** 参加者(`room_participants`)は `user_id` が
+null のゲストがほとんど（かんたん作成は `guest_name="1".."N"`、自己参加も名前のみ）で、
+ユーザー単位では宛先を解決できないため。`room_push_subscriptions` が実体（V16）。
+
+```
+PUT    /api/v1/rooms/{roomId}/push-subscriptions      購読(再登録は upsert)
+DELETE /api/v1/rooms/{roomId}/push-subscriptions?expoToken=...   解除
+```
+
+- `participant_id`（任意）は端末が自己申告した「自分の番号」。あると文面を個別化できる
+  （「あなたの試合です（第3セット・コート2）」／未申告なら「第3セットが始まりました」）。
+- 解除のトークンはクエリパラメータ。`ExponentPushToken[...]` が角括弧を含むため。
+- **送信先は Expo Push API**（`exp.host`）。**FCM/APNs の資格情報は backend が持たない**（EAS 側）。
+  そのため通知の資格情報まわりでこのリポジトリを触る必要はない。
+- **操作した本人を除外しない**。運営者はたいていプレーヤーを兼ねるため自分にも届くのが自然で、
+  副次的に端末 1 台でも動作確認できる。
+- 送信は `@TransactionalEventListener(AFTER_COMMIT)`。外部 HTTP をトランザクションに持ち込むと
+  遅く、通知の失敗でセット開始がロールバックされてしまう。**通知の失敗は握り潰してログのみ**。
+- Expo が `DeviceNotRegistered` を返した端末は購読を自動削除する。ルーム終了時も購読を掃除する。
+- `APP_PUSH_ENABLED=false` で送信を止められる（ローカル開発用）。
+
+**動作確認**: ダミートークンで購読 → セット開始 → 本番ログに
+「セット開始を通知します: 宛先=N件」と、無効トークンなら「端末が無効になったため購読を削除します」
+が出る。`ssh ... 'sudo journalctl -u shuttlematch --since "10 minutes ago" | grep 通知'`
