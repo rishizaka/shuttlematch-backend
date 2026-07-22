@@ -25,7 +25,8 @@ class CloseSessionUseCaseTest {
     @BeforeEach
     void setUp() {
         roomRepository = new FakeSessionRepository();
-        useCase = new CloseRoomUseCase(roomRepository);
+        useCase = new CloseRoomUseCase(
+                roomRepository, event -> { /* 通知は別テスト */ });
     }
 
     @Test

@@ -1,12 +1,14 @@
 package com.shuttlematch.application.usecase.room;
 
 import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.application.notification.RoomNotificationEvents;
 import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +22,15 @@ public class StartSetUseCase {
 
     private final MatchScheduleRepository matchScheduleRepository;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public StartSetUseCase(MatchScheduleRepository matchScheduleRepository, Clock clock) {
+    public StartSetUseCase(
+            MatchScheduleRepository matchScheduleRepository,
+            Clock clock,
+            ApplicationEventPublisher eventPublisher) {
         this.matchScheduleRepository = matchScheduleRepository;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -39,9 +46,13 @@ public class StartSetUseCase {
                     "セットは順番に開始してください。次に開始できるのは第 " + next + " セットです");
         }
 
-        return matchScheduleRepository
+        MatchSchedule started = matchScheduleRepository
                 .startSet(roomId, setNumber, OffsetDateTime.now(clock))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "セットが見つかりません: room=" + roomId.value() + ", set=" + setNumber));
+
+        // 出場者に「あなたの試合です」を届ける。送信はコミット後(リスナー側)。
+        eventPublisher.publishEvent(new RoomNotificationEvents.SetStarted(roomId, setNumber));
+        return started;
     }
 }
