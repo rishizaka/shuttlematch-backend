@@ -12,6 +12,10 @@ ShuttleMatch のバックエンド（Java 21 / Spring Boot 4 / Gradle Kotlin DSL
 - SSH: `ssh -i ~/.ssh/shuttlematch-key.pem ec2-user@3.113.92.223`（passwordless sudo 可）
 - systemd: `shuttlematch.service`（`java -jar ~/app.jar`、EnvFile `/etc/shuttlematch/app.env`、8080 で待受）
 - frontend は同じ EC2 上の別サービス（3000）。詳細は `shuttlematch-frontend` の CLAUDE.md 参照。
+- 公開URL: **https://s-match.net**。CloudFront `E2ZAQ39VPHE72R` が `/api/*` を 8080 に振り分けるので、
+  API も同一オリジン（`https://s-match.net/api/...`）で叩ける。
+- CORS 許可オリジンは EnvFile の `APP_CORS_ALLOWED_ORIGINS`（カンマ区切り）。ドメインを追加したら
+  ここに足して `sudo systemctl restart shuttlematch` が必要。
 
 **手順（backend のコードを変更したとき）**
 
