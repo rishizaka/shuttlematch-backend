@@ -31,7 +31,10 @@ class StartSetUseCaseTest {
     @BeforeEach
     void setUp() {
         repo = new FakeRepo();
-        useCase = new StartSetUseCase(repo, Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC));
+        useCase = new StartSetUseCase(
+                repo,
+                Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC),
+                event -> { /* 通知は別テスト。ここでは publish されても何もしない */ });
     }
 
     /** 1コート想定: 試合番号 n をそのままセット番号として扱う。 */
