@@ -49,9 +49,13 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     # 同時デプロイで jar の差し替えが競合しないよう直列化する。
+    # SecurityGroup の一時ルールが互いに干渉するのを防ぐ意味もある。
     concurrency:
       group: deploy-production
       cancel-in-progress: false
+    permissions:
+      id-token: write # OIDC で AWS ロールを AssumeRole するために必要
+      contents: read
 
     steps:
       - name: Download jar
@@ -69,6 +73,28 @@ jobs:
           echo "Selected: $JAR ($(du -h "$JAR" | cut -f1))"
           cp "$JAR" app.jar
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      # EC2 の 22番は普段あなたの自宅IPにしか開いていない。
+      # runner の IP を /32 で一時的に許可し、最後に必ず削除する。
+      - name: Open SSH for this runner
+        id: open_ssh
+        env:
+          EC2_SG_ID: ${{ secrets.EC2_SG_ID }}
+        run: |
+          set -euo pipefail
+          RUNNER_IP=$(curl -sf --max-time 15 https://checkip.amazonaws.com | tr -d '[:space:]')
+          test -n "$RUNNER_IP"
+          echo "runner_ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$EC2_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=gha-deploy-run-${GITHUB_RUN_ID}}]"
+          echo "opened 22/tcp for ${RUNNER_IP}/32"
+
       - name: Set up SSH
         env:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
@@ -78,7 +104,17 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # SG 反映直後は接続できないことがあるのでリトライする。
+          for i in $(seq 1 10); do
+            if ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null && [ -s ~/.ssh/known_hosts ]; then
+              echo "known_hosts registered"
+              exit 0
+            fi
+            echo "ssh-keyscan retry $i"
+            sleep 5
+          done
+          echo "::error::ssh-keyscan failed - EC2 に到達できません"
+          exit 1
 
       - name: Upload jar to EC2
         env:
@@ -128,6 +164,22 @@ jobs:
             4*) echo "backend reachable via CloudFront" ;;
             *)  echo "::error::unexpected status $code"; exit 1 ;;
           esac
+
+      # 成否にかかわらず一時ルールを必ず閉じる。
+      - name: Close SSH
+        if: always() && steps.open_ssh.outputs.runner_ip != ''
+        env:
+          EC2_SG_ID: ${{ secrets.EC2_SG_ID }}
+          RUNNER_IP: ${{ steps.open_ssh.outputs.runner_ip }}
+        run: |
+          set -euo pipefail
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$EC2_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32}]"
+          echo "closed 22/tcp for ${RUNNER_IP}/32"
+          # 取り残しがないか確認する(あれば警告として可視化)。
+          aws ec2 describe-security-groups --group-ids "$EC2_SG_ID" \
+            --query "SecurityGroups[].IpPermissions[?FromPort==\`22\`].IpRanges[]" --output json
 
       - name: Clean up SSH key
         if: always()
