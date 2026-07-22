@@ -33,11 +33,12 @@ public class ExpoPushNotificationSender implements PushNotificationSender {
     private final boolean enabled;
 
     public ExpoPushNotificationSender(
-            RestClient.Builder restClientBuilder,
             PushSubscriptionRepository subscriptionRepository,
             @Value("${app.push.expo-url:https://exp.host/--/api/v2/push/send}") String expoUrl,
             @Value("${app.push.enabled:true}") boolean enabled) {
-        this.restClient = restClientBuilder.baseUrl(expoUrl).build();
+        // RestClient.Builder の Bean は spring-boot-starter-webmvc には含まれないため、
+        // 依存を増やさず自前で組み立てる。
+        this.restClient = RestClient.create(expoUrl);
         this.subscriptionRepository = subscriptionRepository;
         this.enabled = enabled;
     }
