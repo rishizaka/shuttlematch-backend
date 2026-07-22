@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -34,3 +34,101 @@ jobs:
           name: test-results
           path: build/reports/tests/test
           if-no-files-found: ignore
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    # main への push のときだけデプロイする(PR では走らせない)。
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # 同時デプロイで jar の差し替えが競合しないよう直列化する。
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Download jar
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: artifact
+
+      - name: Select bootJar
+        run: |
+          set -euo pipefail
+          # plain jar(実行不可)を除いた実行可能 jar を選ぶ。
+          JAR=$(ls -t artifact/*.jar | grep -v plain | head -1)
+          test -n "$JAR"
+          echo "Selected: $JAR ($(du -h "$JAR" | cut -f1))"
+          cp "$JAR" app.jar
+
+      - name: Set up SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload jar to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/deploy_key app.jar "ec2-user@$EC2_HOST:/tmp/app.jar"
+
+      - name: Deploy and health check
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "ec2-user@$EC2_HOST" 'bash -eu -o pipefail -s' <<'REMOTE'
+            cd ~
+            # ロールバック用に現行 jar を退避してから差し替える。
+            cp app.jar app.jar.bak
+            mv /tmp/app.jar app.jar
+            sudo systemctl restart shuttlematch
+
+            # 起動完了まで待つ。Spring Boot の起動には数十秒かかることがある。
+            for i in $(seq 1 30); do
+              if curl -sf -o /dev/null http://localhost:8080/actuator/health; then
+                echo "health OK (${i}0s 以内)"
+                systemctl is-active shuttlematch
+                exit 0
+              fi
+              sleep 10
+            done
+
+            # 起動しなかったら直前の jar に戻す。
+            echo "::error::health check failed - rolling back"
+            cp app.jar.bak app.jar
+            sudo systemctl restart shuttlematch
+            sleep 15
+            systemctl is-active shuttlematch || true
+            exit 1
+          REMOTE
+
+      - name: Verify public endpoint
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://s-match.net/api/v1/rooms/__healthcheck__)
+          echo "https://s-match.net/api/* -> HTTP $code"
+          # backend まで到達していれば 4xx が返る(5xx や 000 は異常)。
+          case "$code" in
+            4*) echo "backend reachable via CloudFront" ;;
+            *)  echo "::error::unexpected status $code"; exit 1 ;;
+          esac
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
