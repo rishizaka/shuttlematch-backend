@@ -5,7 +5,22 @@ ShuttleMatch のバックエンド（Java 21 / Spring Boot 4 / Gradle Kotlin DSL
 
 ## デプロイ（本番反映）
 
-> CI/CD は未整備（`ci.yml` は Build&Test のみで自動デプロイなし）。**デプロイは手動で、Claude に依頼して実施している**。将来的に CI/CD 化したい。
+> **main に push すれば自動デプロイされる**（`.github/workflows/ci.yml`）。以下の手動手順は
+> Actions が使えないときの緊急用。
+
+**CI/CD（GitHub Actions）**
+- `build`: JDK21 で `./gradlew build`。main への push と PR で発火。実行可能 jar を artifact 化。
+- `deploy`: **main への push のときだけ**実行（PR では走らない）。`concurrency` で直列化。
+  - jar を scp → `app.jar.bak` に退避 → 差し替え → `systemctl restart`
+  - health check を最大300秒リトライ。**失敗したら `app.jar.bak` へ自動ロールバック**して再起動。
+  - 最後に `https://s-match.net/api/*` の到達を確認。
+- **SSH の到達性**: EC2 の 22番は自宅IP(`14.8.61.161/32`)にしか開いていない。runner は
+  GitHub OIDC で IAM ロール `github-actions-shuttlematch-deploy` を AssumeRole し、
+  自分の IP を /32 で SG に一時追加 → 完了後（失敗時も `if: always()`）必ず revoke する。
+  **22番を常時開放しない設計なので、この仕組みを外さないこと。**
+- Secrets: `EC2_HOST` / `EC2_SSH_KEY`（デプロイ専用 ed25519 鍵）/ `AWS_ROLE_ARN` / `EC2_SG_ID`。
+  デプロイ鍵は EC2 の `~/.ssh/authorized_keys` に `github-actions-deploy@shuttlematch` として登録済み。
+  ローテーションする場合は鍵の再生成 → authorized_keys 差し替え → `gh secret set EC2_SSH_KEY`。
 
 **本番環境**
 - EC2 インスタンス `shuttlematch-app`（`3.113.92.223`, ap-northeast-1, t3.micro）
