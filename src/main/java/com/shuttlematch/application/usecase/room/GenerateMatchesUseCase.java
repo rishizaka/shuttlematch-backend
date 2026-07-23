@@ -60,12 +60,14 @@ public class GenerateMatchesUseCase {
                 room.id(), room.activeParticipantIds(), courtCount, command.matchCount(),
                 room.fixedPairs());
 
-        // 再生成に対応するため既存スケジュールを削除してから保存する
-        matchScheduleRepository.deleteByRoomId(room.id());
-        MatchSchedule saved = matchScheduleRepository.save(schedule);
-
+        // 補充したゲストを含む参加者を先に永続化する。
+        // スケジュール(試合)は参加者IDを参照するため、先に room を保存しないと
+        // 未保存のゲストを参照して外部キー制約に違反する。
         room.markGenerated();
         roomRepository.save(room);
-        return saved;
+
+        // 再生成に対応するため既存スケジュールを削除してから保存する
+        matchScheduleRepository.deleteByRoomId(room.id());
+        return matchScheduleRepository.save(schedule);
     }
 }
