@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GenerateMatchesUseCase {
 
+    /** ダブルス1試合の人数。コート数 × これが試合表生成の最低人数。 */
+    private static final int PLAYERS_PER_MATCH = 4;
+
     private final RoomRepository roomRepository;
     private final MatchScheduleRepository matchScheduleRepository;
     private final MatchingDomainService matchingDomainService;
@@ -42,6 +45,17 @@ public class GenerateMatchesUseCase {
         }
 
         int courtCount = room.courtCount() != null ? room.courtCount() : 1;
+
+        // 在席がコート数 × 4 に満たない分は、番号だけのゲスト枠で埋めてから生成する。
+        // (募集して受付するとき、集まりが少なくてもゲストとして開催できるようにする。
+        //  追加した枠は「番号だけの空き」なので、遅刻者が後から名前を付けて入れる)
+        int required = courtCount * PLAYERS_PER_MATCH;
+        int shortfall = required - room.activeParticipantIds().size();
+        for (int i = 0; i < shortfall; i++) {
+            // 表示番号(参加者の並び順)と一致するよう、末尾の番号を名前にする。
+            room.addGuest(String.valueOf(room.participants().size() + 1));
+        }
+
         MatchSchedule schedule = matchingDomainService.generate(
                 room.id(), room.activeParticipantIds(), courtCount, command.matchCount(),
                 room.fixedPairs());

@@ -86,13 +86,30 @@ class GenerateMatchesUseCaseTest {
     }
 
     @Test
-    @DisplayName("参加者が4人未満なら例外を投げ、保存しない")
-    void doesNotPersistWhenTooFewParticipants() {
+    @DisplayName("コート数×4に満たない分はゲスト枠で埋めて生成する")
+    void fillsGuestsWhenBelowCourtCapacity() {
+        // 1コート(デフォルト)には4人必要。3人しかいなくても1枠ゲスト補充して生成できる。
         Room room = openSessionWithGuests(3);
 
-        assertThatThrownBy(() -> useCase.execute(new GenerateMatchesCommand(room.id())))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThat(matchScheduleRepository.findByRoomId(room.id())).isEmpty();
+        MatchSchedule result = useCase.execute(new GenerateMatchesCommand(room.id()));
+
+        assertThat(result.size()).isEqualTo(10);
+        // 補充後の参加者は4人になっている
+        Room saved = roomRepository.findById(room.id()).orElseThrow();
+        assertThat(saved.activeParticipantIds()).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("再生成では枠を増やしすぎず、必要人数のまま保つ")
+    void regenerationDoesNotKeepAddingGuests() {
+        Room room = openSessionWithGuests(3);
+
+        useCase.execute(new GenerateMatchesCommand(room.id()));
+        useCase.execute(new GenerateMatchesCommand(room.id()));
+
+        // 2回生成しても補充は1枠だけ(4人を超えて増えない)
+        assertThat(roomRepository.findById(room.id()).orElseThrow().activeParticipantIds())
+                .hasSize(4);
     }
 
     @Test
