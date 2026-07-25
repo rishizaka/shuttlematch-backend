@@ -341,6 +341,16 @@ public class MatchingDomainService {
         int required = PLAYERS_PER_MATCH * courtCount;
         List<List<ParticipantId>> units = buildUnits(pool, fixedPairs);
         boolean hasRest = pool.size() > required;
+        // 休みが出場と同数以上(2コートで16人以上など)だと、連続休み禁止を厳密に守ると
+        // 出場グループが2つに固定されて全く混ざらなくなる。この場合だけ連続休みを許容して混ぜる。
+        boolean mixingMode = pool.size() >= 2 * required;
+
+        // 連続休みセット数。lastPlayedSet(最後に出場したセット)から復元する。
+        // セット追加・再編成でも、直前の確定セットからの連続休みを引き継げる。
+        Map<ParticipantId, Integer> consecutiveRests = new HashMap<>();
+        for (ParticipantId p : pool) {
+            consecutiveRests.put(p, Math.max(0, (startSetNumber - 1) - lastPlayedSet.get(p)));
+        }
 
         List<Match> matches = new ArrayList<>();
         int matchNumber = startMatchNumber;
@@ -357,17 +367,24 @@ public class MatchingDomainService {
 
         for (int i = 0; i < setCount; i++) {
             int setNumber = startSetNumber + i;
-            // 出場者の選抜。公平性(出場回数・連続出場)は保ったまま、境界のタイブレークを
+            // 出場者の選抜。公平性(出場回数)は保ったまま、境界のタイブレークを
             // 「これまで同じコートに一緒になっていない人同士」に寄せて、共起の偏りを減らす。
-            List<List<ParticipantId>> selectedUnits = pickUnitsDiverse(
-                    units, playCount, lastPlayedSet, consecutivePlays, required,
-                    partnerCount, opponentCount);
-            if (hasRest) {
-                selectedUnits = avoidRepeatedRest(
-                        units, selectedUnits, playCount, lastPlayedSet, setNumber, recentRest);
-                Set<ParticipantId> rest = restMembers(units, selectedUnits);
-                recentRest.addLast(rest);
-                while (recentRest.size() > restWindow) recentRest.removeFirst();
+            List<List<ParticipantId>> selectedUnits;
+            if (mixingMode) {
+                // 連続休みを許容して2グループ固定を崩し、混ざり合いを優先する。
+                selectedUnits = pickUnitsMixing(
+                        units, playCount, consecutiveRests, required, partnerCount, opponentCount);
+            } else {
+                selectedUnits = pickUnitsDiverse(
+                        units, playCount, lastPlayedSet, consecutivePlays, required,
+                        partnerCount, opponentCount);
+                if (hasRest) {
+                    selectedUnits = avoidRepeatedRest(
+                            units, selectedUnits, playCount, lastPlayedSet, setNumber, recentRest);
+                    Set<ParticipantId> rest = restMembers(units, selectedUnits);
+                    recentRest.addLast(rest);
+                    while (recentRest.size() > restWindow) recentRest.removeFirst();
+                }
             }
 
             // 味方ペア分け・コート割りを、同じコートに一緒になった履歴が少ない組み合わせに寄せる。
@@ -389,9 +406,14 @@ public class MatchingDomainService {
                     playing.add(p);
                 }
             }
-            // 休んだ人は連続出場をリセット。
+            // 休んだ人は連続出場をリセットし、連続休みを+1。出場した人は連続休みを0に。
             for (ParticipantId p : pool) {
-                if (!playing.contains(p)) consecutivePlays.put(p, 0);
+                if (!playing.contains(p)) {
+                    consecutivePlays.put(p, 0);
+                    consecutiveRests.merge(p, 1, Integer::sum);
+                } else {
+                    consecutiveRests.put(p, 0);
+                }
             }
         }
         return matches;
@@ -429,9 +451,16 @@ public class MatchingDomainService {
             List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> lastPlayedSet,
             Map<ParticipantId, Integer> consecutivePlays, int required) {
+        return pickUnits(units, required, unitOrder(playCount, consecutivePlays));
+    }
+
+    /** 指定した優先度(comparator)でユニットを選ぶ。前ほど出場・後ほど休憩。 */
+    private List<List<ParticipantId>> pickUnits(
+            List<List<ParticipantId>> units, int required,
+            Comparator<List<ParticipantId>> order) {
         List<List<ParticipantId>> candidates = new ArrayList<>(units);
         fisherYatesShuffle(candidates);
-        candidates.sort(unitOrder(playCount, consecutivePlays));
+        candidates.sort(order);
 
         List<List<ParticipantId>> selected = new ArrayList<>();
         List<List<ParticipantId>> skipped = new ArrayList<>();
@@ -496,6 +525,48 @@ public class MatchingDomainService {
     private static final int SELECTION_ATTEMPTS = 60;
     /** 味方ペア分け・コート割りの候補生成の試行回数(コート数が多いほど組み合わせが増えるので増やす)。 */
     private static final int ARRANGEMENT_ATTEMPTS = 200;
+    /** 連続で休んでよい最大セット数(混ぜモード時)。2 = 「1回まで連続休みを許容」。 */
+    private static final int MAX_CONSECUTIVE_REST = 2;
+    /** 連続休みが上限を超える選抜を実質禁止するための大きなペナルティ。 */
+    private static final long REST_CAP_PENALTY = 1_000_000L;
+
+    /**
+     * 休みが出場と同数以上になる構成(2コートで16人以上など)向けの選抜。
+     * 「連続休み禁止」を厳密に守ると出場グループが2つに固定され全く混ざらなくなるため、
+     * 連続休みを {@link #MAX_CONSECUTIVE_REST} まで許容し、その自由度を使って
+     * 「同じコートに一緒になっていない顔ぶれ」を優先する。公平性(出場回数)は保つ。
+     */
+    private List<List<ParticipantId>> pickUnitsMixing(
+            List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> consecutiveRests, int required,
+            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+        // 出場回数のみを厳守(公平性)。連続出場/休みは順位に入れず、共起最小化に自由を与える。
+        Comparator<List<ParticipantId>> order =
+                Comparator.comparingInt(u -> playCount.get(u.get(0)));
+        Set<ParticipantId> all = new HashSet<>();
+        for (List<ParticipantId> u : units) all.addAll(u);
+
+        List<List<ParticipantId>> best = null;
+        long bestCost = Long.MAX_VALUE;
+        for (int t = 0; t < SELECTION_ATTEMPTS; t++) {
+            List<List<ParticipantId>> sel = pickUnits(units, required, order);
+            // 共起コスト + 連続休み上限を超える人を休ませる候補への大ペナルティ。
+            long cost = selectionCost(sel, partnerCount, opponentCount);
+            Set<ParticipantId> playing = new HashSet<>();
+            for (List<ParticipantId> u : sel) playing.addAll(u);
+            for (ParticipantId p : all) {
+                if (!playing.contains(p) && consecutiveRests.getOrDefault(p, 0) >= MAX_CONSECUTIVE_REST) {
+                    cost += REST_CAP_PENALTY; // この人をこれ以上続けて休ませない
+                }
+            }
+            if (cost < bestCost) {
+                bestCost = cost;
+                best = sel;
+            }
+        }
+        return best;
+    }
 
     /**
      * 出場者を選ぶ。{@link #pickUnits} を複数回試し(タイブレークのランダム性で毎回少し変わる)、

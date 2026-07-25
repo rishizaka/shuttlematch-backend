@@ -10,6 +10,7 @@ import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.match.Pair;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.RoomId;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -588,6 +589,83 @@ class MatchingDomainServiceTest {
         // 「一度も同コートにならない相手」がほぼ無いこと(全試行平均で1ペア未満、対策前は約7組)。
         assertTrue(neverMetTotal < trials,
                 "一度も同コートにならない相手ペアが多い(平均" + (neverMetTotal / (double) trials) + "組)");
+    }
+
+    @Test
+    @DisplayName("16人2コート(休み=出場)でも2グループ固定にならず混ざる(連続休みは2まで許容)")
+    void sixteenPeopleTwoCourtsMixWithoutFixedCamps() {
+        // 16人・2コートは出場8/休み8。連続休み禁止を厳密に守ると出場者が2グループに固定され、
+        // 相手グループとは一度も同コートにならない(=8×8=64ペアが未対戦)病理になる。
+        // 混ぜモード(連続休み2まで許容)で、未対戦ペアがほぼ無くなり、連続休みも2で頭打ちに
+        // なることを統計で確認する。
+        int n = 16, courts = 2, sets = 14;
+        List<ParticipantId> pool = participants(n);
+        Map<ParticipantId, Integer> idx = new HashMap<>();
+        for (int i = 0; i < n; i++) idx.put(pool.get(i), i + 1);
+
+        int trials = 30;
+        double neverSum = 0;
+        int worstRestStreak = 0;
+        int worstPlayDiff = 0;
+        for (int t = 0; t < trials; t++) {
+            MatchSchedule sch = new MatchingDomainService(new Random(t * 7 + 100))
+                    .generate(roomId, pool, courts, sets);
+            int[][] co = new int[n + 1][n + 1];
+            int[] play = new int[n + 1];
+            Map<Integer, Set<Integer>> playing = new java.util.TreeMap<>();
+            for (Match m : sch.matches()) {
+                int s = m.setNumber();
+                playing.computeIfAbsent(s, k -> new HashSet<>());
+                for (ParticipantId p : participantsOf(m)) {
+                    playing.get(s).add(idx.get(p));
+                    play[idx.get(p)]++;
+                }
+                List<ParticipantId> four = participantsOf(m);
+                for (int i = 0; i < 4; i++) {
+                    for (int j = i + 1; j < 4; j++) {
+                        int a = idx.get(four.get(i)), b = idx.get(four.get(j));
+                        co[a][b]++;
+                        co[b][a]++;
+                    }
+                }
+            }
+            int never = 0;
+            for (int a = 1; a <= n; a++) {
+                for (int b = a + 1; b <= n; b++) {
+                    if (co[a][b] == 0) never++;
+                }
+            }
+            neverSum += never;
+            int pmin = 999, pmax = 0;
+            for (int a = 1; a <= n; a++) {
+                pmin = Math.min(pmin, play[a]);
+                pmax = Math.max(pmax, play[a]);
+            }
+            worstPlayDiff = Math.max(worstPlayDiff, pmax - pmin);
+            // 連続休みの最大長。
+            List<Integer> ss = new ArrayList<>(playing.keySet());
+            Map<Integer, Integer> streak = new HashMap<>();
+            for (int a = 1; a <= n; a++) streak.put(a, 0);
+            for (Integer s : ss) {
+                Set<Integer> pl = playing.get(s);
+                for (int a = 1; a <= n; a++) {
+                    if (pl.contains(a)) streak.put(a, 0);
+                    else {
+                        streak.merge(a, 1, Integer::sum);
+                        worstRestStreak = Math.max(worstRestStreak, streak.get(a));
+                    }
+                }
+            }
+        }
+        double avgNever = neverSum / trials;
+        // 厳密版なら64組が未対戦。混ぜモードでは平均5組未満まで激減すること。
+        assertTrue(avgNever < 5.0,
+                "16人で一度も同コートにならないペアが多い(平均" + avgNever + "組)");
+        // 連続休みは2セットまで(=1回まで連続休み許容)。3連続は起きないこと。
+        assertTrue(worstRestStreak <= 2,
+                "連続休みが上限(2)を超えた: " + worstRestStreak);
+        // 出場回数は公平(差は最大1)。
+        assertTrue(worstPlayDiff <= 1, "出場回数の差が大きい: " + worstPlayDiff);
     }
 
     /** 1試合の4名。 */
