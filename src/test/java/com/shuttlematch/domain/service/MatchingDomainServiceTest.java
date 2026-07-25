@@ -536,6 +536,60 @@ class MatchingDomainServiceTest {
         }
     }
 
+    @Test
+    @DisplayName("15人2コート25セットでも、同じ相手と何度も同じコートにならない(共起の偏りが小さい)")
+    void coCourtOccurrenceIsWellSpread() {
+        // 実際にクレームが出た構成(15人・2コート・25セット)。対策前はランダム配置のため
+        // 特定の相手と6回同コート・別の相手とは0回、といった偏りが出ていた。
+        // 各人の「同じ相手と同コートになった最大回数」が過度に大きくならないことを統計で確認する。
+        int n = 15, courts = 2, sets = 25;
+        List<ParticipantId> pool = participants(n);
+        Map<ParticipantId, Integer> idx = new HashMap<>();
+        for (int i = 0; i < n; i++) idx.put(pool.get(i), i + 1);
+
+        int trials = 40;
+        int worstMaxCoCourt = 0;
+        double avgMax = 0;
+        int neverMetTotal = 0; // 一度も同コートにならなかった相手ペアの総数(全試行合計)
+        for (int t = 0; t < trials; t++) {
+            MatchSchedule sch = new MatchingDomainService(new Random(t))
+                    .generate(roomId, pool, courts, sets);
+            // 同コート共起の回数(無向)。
+            int[][] co = new int[n + 1][n + 1];
+            for (Match m : sch.matches()) {
+                List<ParticipantId> four = participantsOf(m);
+                for (int i = 0; i < 4; i++) {
+                    for (int j = i + 1; j < 4; j++) {
+                        int a = idx.get(four.get(i)), b = idx.get(four.get(j));
+                        co[a][b]++;
+                        co[b][a]++;
+                    }
+                }
+            }
+            int maxCo = 0;
+            for (int a = 1; a <= n; a++) {
+                for (int b = a + 1; b <= n; b++) {
+                    maxCo = Math.max(maxCo, co[a][b]);
+                    if (co[a][b] == 0) neverMetTotal++;
+                }
+            }
+            worstMaxCoCourt = Math.max(worstMaxCoCourt, maxCo);
+            avgMax += maxCo;
+        }
+        avgMax /= trials;
+
+        // 参考: 完全ランダム配置(対策前)では avgMax≈7.5・worst=10・「一度も当たらない相手」≈7組。
+        // 対策後(選抜と組み合わせを共起の少ない方へ寄せる)は大幅に改善する。
+        // 最悪でも「同じ相手と6回超も同コート」は起きないこと(以前は10回が観測された)。
+        assertTrue(worstMaxCoCourt <= 6,
+                "同じ相手と同コートになった最大回数が多すぎる: " + worstMaxCoCourt);
+        // 平均的には最大でも5回程度に収まること(対策前は約7.5)。
+        assertTrue(avgMax <= 5.5, "同コート共起の最大回数の平均が大きい: " + avgMax);
+        // 「一度も同コートにならない相手」がほぼ無いこと(全試行平均で1ペア未満、対策前は約7組)。
+        assertTrue(neverMetTotal < trials,
+                "一度も同コートにならない相手ペアが多い(平均" + (neverMetTotal / (double) trials) + "組)");
+    }
+
     /** 1試合の4名。 */
     private List<ParticipantId> participantsOf(Match m) {
         return List.of(
