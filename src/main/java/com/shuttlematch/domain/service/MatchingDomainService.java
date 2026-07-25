@@ -34,6 +34,10 @@ import java.util.random.RandomGenerator;
  *       いる人を優先して休ませる)。身体ケアのため、公平性を保ったまま長い連続出場を避ける。
  *       直前に休んだ人は連続0で優先出場になるので、同一人物が連続で休みにもならない。</li>
  *   <li>それでも同順位ならタイブレーク・ペア分けを Fisher-Yates シャッフルでランダム化する。</li>
+ *   <li>「同じ顔ぶれで同じコートに入る」重複を避ける: 同コート共起の履歴(敵味方の区別なし)を
+ *       蓄積し、公平性を保った選抜候補とコート割りを共起の少ない組み合わせへ最適化する。
+ *       さらにスケジュール全体を複数回生成し、(最大共起, 未共起ペア数, ばらつき) が
+ *       最良のものを採用する。</li>
  * </ul>
  * <p>
  * <b>固定ペア</b>: 事前に「常に同じチームで組む2人」を指定できる。固定ペアは1つの
@@ -80,23 +84,25 @@ public class MatchingDomainService {
         }
 
         List<ParticipantId> pool = validatedPool(participants, courtCount);
-        Map<ParticipantId, Integer> playCount = new HashMap<>();
-        pool.forEach(p -> playCount.put(p, 0));
-        // 0 = まだ一度も出場していない(全員同条件でスタート)。
-        Map<ParticipantId, Integer> lastPlayedSet = new HashMap<>();
-        pool.forEach(p -> lastPlayedSet.put(p, 0));
-        // 連続出場数(何セット連続でコートに入っているか)。休むと0にリセット。
-        // 身体ケアのため、公平性を保ちつつ長い連続出場を避けるのに使う。
-        Map<ParticipantId, Integer> consecutivePlays = new HashMap<>();
-        pool.forEach(p -> consecutivePlays.put(p, 0));
 
-        // 対戦相手・味方の履歴(空スタート)。同じ相手との繰り返しを避けるのに使う。
-        Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount = new HashMap<>();
-        Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount = new HashMap<>();
-
-        List<Match> matches = buildSets(
-                pool, playCount, lastPlayedSet, consecutivePlays, partnerCount, opponentCount,
-                courtCount, setCount, 1, 1, fixedPairs, List.of());
+        List<Match> matches = bestOfRestarts(
+                pool, List.of(), isLargeSearch(courtCount) ? 2 : SCHEDULE_RESTARTS, () -> {
+            // 出場回数・最終出場セット・連続出場は全員 0 スタート(全員同条件)。
+            Map<ParticipantId, Integer> playCount = new HashMap<>();
+            pool.forEach(p -> playCount.put(p, 0));
+            Map<ParticipantId, Integer> lastPlayedSet = new HashMap<>();
+            pool.forEach(p -> lastPlayedSet.put(p, 0));
+            // 連続出場数(何セット連続でコートに入っているか)。休むと0にリセット。
+            // 身体ケアのため、公平性を保ちつつ長い連続出場を避けるのに使う。
+            Map<ParticipantId, Integer> consecutivePlays = new HashMap<>();
+            pool.forEach(p -> consecutivePlays.put(p, 0));
+            // 同コート共起の履歴(空スタート)。同じ相手との繰り返しを避けるのに使う。
+            // 敵味方は区別しない(現場ではコート内でペアを組み直して遊ぶことが多く、
+            // 体験として意味があるのは「同じコートに入った顔ぶれ」だから)。
+            return buildSets(
+                    pool, playCount, lastPlayedSet, consecutivePlays, new HashMap<>(),
+                    courtCount, setCount, 1, 1, fixedPairs, List.of());
+        });
         return new MatchSchedule(roomId, matches);
     }
 
@@ -126,28 +132,24 @@ public class MatchingDomainService {
 
         List<ParticipantId> pool = validatedPool(participants, courtCount);
 
-        // 既存の出場回数を引き継ぐ。新規参加者は優先させない(既存の最小回数にシード)。
-        Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, existing.matches());
-        // 「最後に出場したセット」も引き継ぐ。連続休み回避が既存セットをまたいで効くようにする。
-        Map<ParticipantId, Integer> lastPlayedSet =
-                seededLastPlayedSet(pool, existing.matches(), existing.setCount());
-        // 連続出場数も引き継ぐ(連続出場の抑制が既存セットをまたいで効くようにする)。
-        Map<ParticipantId, Integer> consecutivePlays =
-                seededConsecutivePlays(pool, existing.matches(), existing.setCount());
-
-        // 既存試合の対戦・味方履歴を引き継ぐ(相手の偏り回避が境界をまたいで効くように)。
-        Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount = new HashMap<>();
-        Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount = new HashMap<>();
-        seedPairHistory(existing.matches(), partnerCount, opponentCount);
-
         int startSetNumber = existing.setCount() + 1;
         int startMatchNumber = maxMatchNumber(existing.matches()) + 1;
 
-        List<Match> added = buildSets(
-                pool, playCount, lastPlayedSet, consecutivePlays, partnerCount, opponentCount,
-                courtCount, additionalSetCount,
-                startSetNumber, startMatchNumber, fixedPairs,
-                restGroupsOf(pool, existing.matches()));
+        List<Match> added = bestOfRestarts(
+                pool, existing.matches(), isLargeSearch(courtCount) ? 2 : SCHEDULE_RESTARTS, () -> {
+            // 既存の出場実績・連続出場・共起履歴を引き継ぐ(公平性と偏り回避が
+            // 境界をまたいで効くように)。新規参加者は優先させない(最小回数にシード)。
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount = new HashMap<>();
+            seedPairHistory(existing.matches(), coCount);
+            return buildSets(
+                    pool,
+                    seededPlayCounts(pool, existing.matches()),
+                    seededLastPlayedSet(pool, existing.matches(), existing.setCount()),
+                    seededConsecutivePlays(pool, existing.matches(), existing.setCount()),
+                    coCount, courtCount, additionalSetCount,
+                    startSetNumber, startMatchNumber, fixedPairs,
+                    restGroupsOf(pool, existing.matches()));
+        });
 
         List<Match> all = new ArrayList<>(existing.matches());
         all.addAll(added);
@@ -201,24 +203,77 @@ public class MatchingDomainService {
             return new MatchSchedule(existing.roomId(), committed);
         }
 
-        Map<ParticipantId, Integer> playCount = seededPlayCounts(pool, committed);
-        Map<ParticipantId, Integer> lastPlayedSet =
-                seededLastPlayedSet(pool, committed, maxStartedSet);
-        Map<ParticipantId, Integer> consecutivePlays =
-                seededConsecutivePlays(pool, committed, maxStartedSet);
-        // 開始済み試合の対戦・味方履歴を引き継ぐ(再編成後も相手が偏らないように)。
-        Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount = new HashMap<>();
-        Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount = new HashMap<>();
-        seedPairHistory(committed, partnerCount, opponentCount);
-        List<Match> future = buildSets(
-                pool, playCount, lastPlayedSet, consecutivePlays, partnerCount, opponentCount,
-                effectiveCourtCount, futureSetCount,
-                maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs,
-                restGroupsOf(pool, committed));
+        List<Match> future = bestOfRestarts(
+                pool, committed, isLargeSearch(effectiveCourtCount) ? 2 : SCHEDULE_RESTARTS, () -> {
+            // 開始済み試合の出場実績・共起履歴を引き継ぐ(再編成後も相手が偏らないように)。
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount = new HashMap<>();
+            seedPairHistory(committed, coCount);
+            return buildSets(
+                    pool,
+                    seededPlayCounts(pool, committed),
+                    seededLastPlayedSet(pool, committed, maxStartedSet),
+                    seededConsecutivePlays(pool, committed, maxStartedSet),
+                    coCount, effectiveCourtCount, futureSetCount,
+                    maxStartedSet + 1, maxMatchNumber(committed) + 1, fixedPairs,
+                    restGroupsOf(pool, committed));
+        });
 
         List<Match> all = new ArrayList<>(committed);
         all.addAll(future);
         return new MatchSchedule(existing.roomId(), all);
+    }
+
+    /** スケジュール全体の生成をやり直す回数(最良の1つを採用する)。 */
+    private static final int SCHEDULE_RESTARTS = 4;
+
+    /**
+     * コート数が多いほど1回の生成が重くなる(局所探索の空間が広がる)ため、
+     * 5コート以上では探索量を半分に落として実行時間を抑える。
+     * 大人数×多コートは組み合わせの自由度が高く、探索量を絞っても品質はほぼ落ちない。
+     */
+    private boolean isLargeSearch(int courtCount) {
+        return courtCount >= 5;
+    }
+
+    /**
+     * スケジュール(の追加分)の生成を {@link #SCHEDULE_RESTARTS} 回試し、確定分と合わせた
+     * 全体の共起分布が最も良いものを採用する。1セットずつの貪欲な最適化は局所的には最良でも
+     * 序盤の引きに全体の仕上がりが左右されるため、全体を数回作って結果で選ぶ。
+     * 良さは (1) 最大共起回数が小さい (2) 一度も同コートにならないペアが少ない
+     * (3) 共起回数のばらつきが小さい、の辞書式で比較する。
+     */
+    private List<Match> bestOfRestarts(
+            List<ParticipantId> pool, List<Match> committed, int restarts,
+            java.util.function.Supplier<List<Match>> attempt) {
+        List<Match> best = null;
+        long[] bestQuality = null;
+        for (int r = 0; r < restarts; r++) {
+            List<Match> cand = attempt.get();
+            long[] quality = scheduleQuality(pool, committed, cand);
+            if (best == null || java.util.Arrays.compare(quality, bestQuality) < 0) {
+                best = cand;
+                bestQuality = quality;
+            }
+        }
+        return best;
+    }
+
+    /** 確定分+候補分を合わせた共起分布の質: {最大共起, 未共起ペア数, 共起の2乗和}。小さいほど良い。 */
+    private long[] scheduleQuality(
+            List<ParticipantId> pool, List<Match> committed, List<Match> candidate) {
+        Map<ParticipantId, Map<ParticipantId, Integer>> coCount = new HashMap<>();
+        seedPairHistory(committed, coCount);
+        seedPairHistory(candidate, coCount);
+        long maxCo = 0, neverMet = 0, sumSquares = 0;
+        for (int i = 0; i < pool.size(); i++) {
+            for (int j = i + 1; j < pool.size(); j++) {
+                int c = pairGet(coCount, pool.get(i), pool.get(j));
+                maxCo = Math.max(maxCo, c);
+                if (c == 0) neverMet++;
+                sumSquares += (long) c * c;
+            }
+        }
+        return new long[] {maxCo, neverMet, sumSquares};
     }
 
     /**
@@ -334,8 +389,7 @@ public class MatchingDomainService {
             List<ParticipantId> pool, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> lastPlayedSet,
             Map<ParticipantId, Integer> consecutivePlays,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount,
             int courtCount, int setCount, int startSetNumber, int startMatchNumber,
             List<Pair> fixedPairs, List<Set<ParticipantId>> seedRecentRest) {
         int required = PLAYERS_PER_MATCH * courtCount;
@@ -373,11 +427,11 @@ public class MatchingDomainService {
             if (mixingMode) {
                 // 連続休みを許容して2グループ固定を崩し、混ざり合いを優先する。
                 selectedUnits = pickUnitsMixing(
-                        units, playCount, consecutiveRests, required, partnerCount, opponentCount);
+                        units, playCount, consecutiveRests, required, courtCount, coCount);
             } else {
                 selectedUnits = pickUnitsDiverse(
                         units, playCount, lastPlayedSet, consecutivePlays, required,
-                        partnerCount, opponentCount);
+                        courtCount, coCount);
                 if (hasRest) {
                     selectedUnits = avoidRepeatedRest(
                             units, selectedUnits, playCount, lastPlayedSet, setNumber, recentRest);
@@ -387,14 +441,17 @@ public class MatchingDomainService {
                 }
             }
 
-            // 味方ペア分け・コート割りを、同じコートに一緒になった履歴が少ない組み合わせに寄せる。
-            // 「同じメンツで同じコートに入る」重複(味方でも敵でも退屈)を減らすのが狙い。
-            List<Pair> pairs = bestArrangement(selectedUnits, courtCount, partnerCount, opponentCount);
+            // コート割り(=同じコートの4人の組)を、同じコートに一緒になった履歴が
+            // 少ない組み合わせに寄せる。「同じメンツで同じコートに入る」重複を減らすのが狙い。
+            List<Pair> pairs = bestArrangement(
+                    selectedUnits, courtCount, coCount,
+                    isLargeSearch(courtCount) ? ARRANGEMENT_STARTS / 2 : ARRANGEMENT_STARTS,
+                    !mixingMode);
             for (int court = 1; court <= courtCount; court++) {
                 Pair pairA = pairs.get((court - 1) * 2);
                 Pair pairB = pairs.get((court - 1) * 2 + 1);
                 matches.add(Match.of(MatchNumber.of(matchNumber++), setNumber, court, pairA, pairB));
-                recordArrangement(partnerCount, opponentCount, pairA, pairB);
+                recordArrangement(coCount, pairA, pairB);
             }
 
             Set<ParticipantId> playing = new HashSet<>();
@@ -439,19 +496,6 @@ public class MatchingDomainService {
             if (!paired.contains(id)) units.add(List.of(id));
         }
         return units;
-    }
-
-    /**
-     * 出場するユニットを選ぶ。優先度は
-     * (1) 出場回数が少ない順、(2) 最後に出場したセットが古い順、(3) ランダム。
-     * ユニットの合計人数がちょうど {@code required} になるよう選ぶ。
-     * 端数(残り1人)が出た場合は、自由参加者1人を外して固定ペア1組を入れて帳尻を合わせる。
-     */
-    private List<List<ParticipantId>> pickUnits(
-            List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
-            Map<ParticipantId, Integer> lastPlayedSet,
-            Map<ParticipantId, Integer> consecutivePlays, int required) {
-        return pickUnits(units, required, unitOrder(playCount, consecutivePlays));
     }
 
     /** 指定した優先度(comparator)でユニットを選ぶ。前ほど出場・後ほど休憩。 */
@@ -523,12 +567,37 @@ public class MatchingDomainService {
 
     /** 出場者選抜の候補生成の試行回数(公平性は保ったまま、共起の少ない顔ぶれを選ぶ)。 */
     private static final int SELECTION_ATTEMPTS = 60;
-    /** 味方ペア分け・コート割りの候補生成の試行回数(コート数が多いほど組み合わせが増えるので増やす)。 */
-    private static final int ARRANGEMENT_ATTEMPTS = 200;
+    /** 選抜候補として評価する「異なる顔ぶれ」の最大数(1候補ごとにコート割りまで試すため)。 */
+    private static final int MAX_SELECTION_CANDIDATES = 16;
+    /** 味方ペア分け・コート割りの局所探索(山登り)の初期解の数(最終決定用)。 */
+    private static final int ARRANGEMENT_STARTS = 24;
+    /** 選抜候補の比較評価に使う局所探索の初期解の数(候補数が多いので軽めにする)。 */
+    private static final int CANDIDATE_ARRANGEMENT_STARTS = 6;
     /** 連続で休んでよい最大セット数(混ぜモード時)。2 = 「1回まで連続休みを許容」。 */
     private static final int MAX_CONSECUTIVE_REST = 2;
-    /** 連続休みが上限を超える選抜を実質禁止するための大きなペナルティ。 */
-    private static final long REST_CAP_PENALTY = 1_000_000L;
+    /** 連続休みが上限を超える選抜を実質禁止するための大きなペナルティ(共起コストより常に重い)。 */
+    private static final long REST_CAP_PENALTY = 1L << 50;
+
+    /**
+     * 2人を「もう一度」同じコートに入れることの重み。
+     * <ul>
+     *   <li>未共起(c=0)は負(=積極的に同席させて初顔合わせを作る)。</li>
+     *   <li>凸(convex=true): 4^c - 1。線形和だと「5回目の再会」も「1回目の顔合わせ」も同じ
+     *       1点で、少数のペアに重複が集中しても合計が同じなら選ばれてしまう。指数重みにすると
+     *       回数の多いペアの再共起が支配的なコストになり、実質「最大共起回数の最小化」
+     *       (全体が均等に混ざる)へ寄る。通常モード(休み&lt;出場)向け。</li>
+     *   <li>線形(convex=false): c。混ぜモード(休み≧出場、16人2コートなど)では共起回数の
+     *       上限より「未共起ペアを減らす」方が体験に効くため、最大値の圧縮に偏らない
+     *       線形重みでカバレッジを優先する。</li>
+     * </ul>
+     */
+    private long pairCost(int count, boolean convex) {
+        if (count == 0) return -FIRST_MEET_BONUS;
+        return convex ? (1L << Math.min(2 * count, 40)) - 1 : count;
+    }
+
+    /** まだ同コートになったことのない2人を同時に選ぶことへのボーナス(初顔合わせの機会を作る)。 */
+    private static final long FIRST_MEET_BONUS = 2;
 
     /**
      * 休みが出場と同数以上になる構成(2コートで16人以上など)向けの選抜。
@@ -538,9 +607,8 @@ public class MatchingDomainService {
      */
     private List<List<ParticipantId>> pickUnitsMixing(
             List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
-            Map<ParticipantId, Integer> consecutiveRests, int required,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+            Map<ParticipantId, Integer> consecutiveRests, int required, int courtCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount) {
         // 出場回数のみを厳守(公平性)。連続出場/休みは順位に入れず、共起最小化に自由を与える。
         Comparator<List<ParticipantId>> order =
                 Comparator.comparingInt(u -> playCount.get(u.get(0)));
@@ -548,20 +616,26 @@ public class MatchingDomainService {
         for (List<ParticipantId> u : units) all.addAll(u);
 
         List<List<ParticipantId>> best = null;
-        long bestCost = Long.MAX_VALUE;
-        for (int t = 0; t < SELECTION_ATTEMPTS; t++) {
-            List<List<ParticipantId>> sel = pickUnits(units, required, order);
-            // 共起コスト + 連続休み上限を超える人を休ませる候補への大ペナルティ。
-            long cost = selectionCost(sel, partnerCount, opponentCount);
-            Set<ParticipantId> playing = new HashSet<>();
-            for (List<ParticipantId> u : sel) playing.addAll(u);
+        long bestPrimary = Long.MAX_VALUE;
+        long bestSecondary = Long.MAX_VALUE;
+        for (Map.Entry<Set<ParticipantId>, List<List<ParticipantId>>> e :
+                distinctSelections(units, required, order,
+                        isLargeSearch(courtCount) ? MAX_SELECTION_CANDIDATES / 2 : MAX_SELECTION_CANDIDATES)
+                .entrySet()) {
+            List<List<ParticipantId>> sel = e.getValue();
+            // 総当たり共起コスト + 連続休み上限超過への大ペナルティ(主)。
+            long primary = selectionCost(sel, coCount, false);
             for (ParticipantId p : all) {
-                if (!playing.contains(p) && consecutiveRests.getOrDefault(p, 0) >= MAX_CONSECUTIVE_REST) {
-                    cost += REST_CAP_PENALTY; // この人をこれ以上続けて休ませない
+                if (!e.getKey().contains(p)
+                        && consecutiveRests.getOrDefault(p, 0) >= MAX_CONSECUTIVE_REST) {
+                    primary += REST_CAP_PENALTY; // この人をこれ以上続けて休ませない
                 }
             }
-            if (cost < bestCost) {
-                bestCost = cost;
+            if (primary > bestPrimary) continue;
+            long secondary = arrangedCost(sel, courtCount, coCount, false);
+            if (primary < bestPrimary || secondary < bestSecondary) {
+                bestPrimary = primary;
+                bestSecondary = secondary;
                 best = sel;
             }
         }
@@ -571,129 +645,215 @@ public class MatchingDomainService {
     /**
      * 出場者を選ぶ。{@link #pickUnits} を複数回試し(タイブレークのランダム性で毎回少し変わる)、
      * 公平性は同じまま「選ばれた人同士がこれまで同じコートに一緒になっていない」度合いが
-     * 最も高い顔ぶれを選ぶ。これで特定の相手とばかり一緒になる偏りを減らす。
+     * 最も高い顔ぶれを選ぶ(主)。総当たりコストが同じ候補は「実際にコート割りしたときの
+     * コスト」が小さい方を採る(従)。総当たりを主にするのは、今は別コートへ分けられる
+     * 2人でも、同じ顔ぶれの共選抜を繰り返せばいずれ同コートを強いられるため
+     * (コート割り後コストだけで選ぶと長期的にはかえって偏る)。
      */
     private List<List<ParticipantId>> pickUnitsDiverse(
             List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> lastPlayedSet, Map<ParticipantId, Integer> consecutivePlays,
-            int required,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+            int required, int courtCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount) {
         List<List<ParticipantId>> best = null;
-        long bestCost = Long.MAX_VALUE;
-        for (int t = 0; t < SELECTION_ATTEMPTS; t++) {
-            List<List<ParticipantId>> sel =
-                    pickUnits(units, playCount, lastPlayedSet, consecutivePlays, required);
-            long cost = selectionCost(sel, partnerCount, opponentCount);
-            if (cost < bestCost) {
-                bestCost = cost;
+        long bestPrimary = Long.MAX_VALUE;
+        long bestSecondary = Long.MAX_VALUE;
+        for (List<List<ParticipantId>> sel :
+                distinctSelections(units, required, unitOrder(playCount, consecutivePlays),
+                        isLargeSearch(courtCount) ? MAX_SELECTION_CANDIDATES / 2 : MAX_SELECTION_CANDIDATES)
+                .values()) {
+            long primary = selectionCost(sel, coCount, true);
+            if (primary > bestPrimary) continue;
+            long secondary = arrangedCost(sel, courtCount, coCount, true);
+            if (primary < bestPrimary || secondary < bestSecondary) {
+                bestPrimary = primary;
+                bestSecondary = secondary;
                 best = sel;
-                if (cost == 0) break;
             }
         }
         return best;
     }
 
-    /** 選ばれた出場者全員について、これまでの同コート共起回数を総当たりで足したコスト。 */
+    /** 選ばれた出場者全員について、これまでの同コート共起の重みを総当たりで足したコスト。 */
     private long selectionCost(
             List<List<ParticipantId>> selectedUnits,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, boolean convex) {
         List<ParticipantId> players = new ArrayList<>();
         for (List<ParticipantId> unit : selectedUnits) players.addAll(unit);
         long cost = 0;
         for (int i = 0; i < players.size(); i++) {
             for (int j = i + 1; j < players.size(); j++) {
-                cost += together(partnerCount, opponentCount, players.get(i), players.get(j));
+                cost += pairCost(pairGet(coCount, players.get(i), players.get(j)), convex);
             }
         }
         return cost;
     }
-    /** 同じ相手と「味方」で繰り返す方が、敵で繰り返すよりやや退屈なので、味方の重複に足す重み。 */
-    private static final int PARTNER_EXTRA_WEIGHT = 1;
 
     /**
-     * 出場ユニットから、味方ペア分けとコート割り(=同じコートの4人の組)を決める。
-     * ランダムな候補を複数作り、「これまで同じコートに一緒になった回数」の合計が最小の
-     * 組み合わせを選ぶ。味方でも敵でも「同じコートに入る重複」を等しく減らすのが目的。
+     * {@link #pickUnits} を複数回試し、顔ぶれ(出場者の集合)が異なる選抜候補を集める。
+     * タイブレークのランダム性で毎回少し変わるが同じ顔ぶれになることも多いので、
+     * 重複を除いて {@link #MAX_SELECTION_CANDIDATES} 件まで集める。
+     */
+    private Map<Set<ParticipantId>, List<List<ParticipantId>>> distinctSelections(
+            List<List<ParticipantId>> units, int required,
+            Comparator<List<ParticipantId>> order, int maxCandidates) {
+        Map<Set<ParticipantId>, List<List<ParticipantId>>> candidates = new HashMap<>();
+        for (int t = 0; t < SELECTION_ATTEMPTS && candidates.size() < maxCandidates; t++) {
+            List<List<ParticipantId>> sel = pickUnits(units, required, order);
+            Set<ParticipantId> key = new HashSet<>();
+            for (List<ParticipantId> u : sel) key.addAll(u);
+            candidates.putIfAbsent(key, sel);
+        }
+        return candidates;
+    }
+
+    /** 選抜候補を「実際に最良のコート割りをしたときのコスト」で評価する(軽めの局所探索)。 */
+    private long arrangedCost(
+            List<List<ParticipantId>> selectedUnits, int courtCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, boolean convex) {
+        List<Pair> arranged = bestArrangement(
+                selectedUnits, courtCount, coCount,
+                isLargeSearch(courtCount) ? CANDIDATE_ARRANGEMENT_STARTS / 2 : CANDIDATE_ARRANGEMENT_STARTS,
+                convex);
+        return arrangementCost(arranged, courtCount, coCount, convex);
+    }
+
+    /**
+     * 出場ユニットから、ペア分けとコート割り(=同じコートの4人の組)を決める。
+     * ランダムな初期解から山登り法(選手同士・ペア同士のスワップで改善が止まるまで)で
+     * 局所最適に降ろし、それを複数の初期解で繰り返して最良を採る。単純なランダム試行より
+     * 探索空間を確実にカバーでき、「これまで同じコートに一緒になった重み」を最小化する。
      */
     private List<Pair> bestArrangement(
             List<List<ParticipantId>> selectedUnits, int courtCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, int starts, boolean convex) {
+        // 固定ペアのメンバーはペア分けスワップの対象外(常に2人で1つの Pair)。
+        Set<ParticipantId> frees = new HashSet<>();
+        for (List<ParticipantId> unit : selectedUnits) {
+            if (unit.size() == 1) frees.add(unit.get(0));
+        }
         List<Pair> best = null;
         long bestCost = Long.MAX_VALUE;
-        for (int t = 0; t < ARRANGEMENT_ATTEMPTS; t++) {
+        for (int t = 0; t < starts; t++) {
             List<Pair> cand = buildPairs(selectedUnits); // 固定ペアはそのまま、自由参加者は2人ずつ
             fisherYatesShuffle(cand); // コート割り・pairA/pairB をランダム化
-            long cost = arrangementCost(cand, courtCount, partnerCount, opponentCount);
+            long cost = localImprove(cand, courtCount, frees, coCount, convex);
             if (cost < bestCost) {
                 bestCost = cost;
                 best = cand;
-                if (cost == 0) break; // 一度も被っていない理想の組み合わせが見つかった
             }
         }
         return best;
     }
 
     /**
-     * 組み合わせのコスト。各コートの4人について、全6ペアの「これまでの同コート共起回数」を
-     * 足し合わせる(味方でも敵でも同じ重み)。味方の重複だけは PARTNER_EXTRA_WEIGHT を上乗せする。
-     * 合計が小さいほど「新鮮な顔合わせ」になる。
+     * 山登り法。改善がある限り (1) ペア同士のコート入れ替え、(2) 別コートの自由参加者
+     * 同士の入れ替え、を繰り返す。cand を直接書き換え、局所最適のコストを返す。
      */
-    private long arrangementCost(
-            List<Pair> pairs, int courtCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
-        long cost = 0;
-        for (int court = 0; court < courtCount; court++) {
-            Pair a = pairs.get(court * 2);
-            Pair b = pairs.get(court * 2 + 1);
-            ParticipantId a1 = a.player1(), a2 = a.player2();
-            ParticipantId b1 = b.player1(), b2 = b.player2();
-            // 味方ペア(2組): 同コート共起 + 味方の重複ペナルティ。
-            cost += together(partnerCount, opponentCount, a1, a2)
-                    + (long) PARTNER_EXTRA_WEIGHT * pairGet(partnerCount, a1, a2);
-            cost += together(partnerCount, opponentCount, b1, b2)
-                    + (long) PARTNER_EXTRA_WEIGHT * pairGet(partnerCount, b1, b2);
-            // 敵ペア(4組): 同コート共起。
-            cost += together(partnerCount, opponentCount, a1, b1);
-            cost += together(partnerCount, opponentCount, a1, b2);
-            cost += together(partnerCount, opponentCount, a2, b1);
-            cost += together(partnerCount, opponentCount, a2, b2);
+    private long localImprove(
+            List<Pair> cand, int courtCount, Set<ParticipantId> frees,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, boolean convex) {
+        long cost = arrangementCost(cand, courtCount, coCount, convex);
+        boolean improved = true;
+        while (improved) {
+            improved = false;
+            // (1) ペアを別コートへ入れ替える(コートの顔ぶれが変わる)。
+            for (int i = 0; i < cand.size(); i++) {
+                for (int j = i + 1; j < cand.size(); j++) {
+                    if (i / 2 == j / 2) continue; // 同じコート内の入替はコストに影響しない
+                    Collections.swap(cand, i, j);
+                    long c = arrangementCost(cand, courtCount, coCount, convex);
+                    if (c < cost) {
+                        cost = c;
+                        improved = true;
+                    } else {
+                        Collections.swap(cand, i, j);
+                    }
+                }
+            }
+            // (2) 別コートの自由参加者同士を入れ替える(コートの顔ぶれが変わる)。
+            // Pair は生成時に2人を昇順へ正規化するため、スロット位置ではなく
+            // 参加者IDで入れ替える(IDベースなら巻き戻しが正確に元へ戻る)。
+            for (int i = 0; i < cand.size(); i++) {
+                for (int j = i + 1; j < cand.size(); j++) {
+                    if (i / 2 == j / 2) continue; // 同じコート内の入替はコストに影響しない
+                    for (int si = 0; si < 2; si++) {
+                        for (int sj = 0; sj < 2; sj++) {
+                            ParticipantId a = playerAt(cand.get(i), si);
+                            ParticipantId b = playerAt(cand.get(j), sj);
+                            if (!frees.contains(a) || !frees.contains(b)) continue;
+                            swapPlayers(cand, i, a, j, b);
+                            long c = arrangementCost(cand, courtCount, coCount, convex);
+                            if (c < cost) {
+                                cost = c;
+                                improved = true;
+                            } else {
+                                swapPlayers(cand, i, b, j, a); // 元に戻す
+                            }
+                        }
+                    }
+                }
+            }
         }
         return cost;
     }
 
-    /** 2人がこれまで同じコートに一緒になった回数(味方回数 + 敵回数)。 */
-    private int together(
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount,
-            ParticipantId a, ParticipantId b) {
-        return pairGet(partnerCount, a, b) + pairGet(opponentCount, a, b);
+    private ParticipantId playerAt(Pair pair, int slot) {
+        return slot == 0 ? pair.player1() : pair.player2();
     }
 
-    /** 決めた組み合わせを履歴に反映する(味方は partnerCount、敵は opponentCount を加算)。 */
+    /** ペア i の選手 a と、ペア j の選手 b を入れ替える。 */
+    private void swapPlayers(List<Pair> pairs, int i, ParticipantId a, int j, ParticipantId b) {
+        pairs.set(i, replaced(pairs.get(i), a, b));
+        pairs.set(j, replaced(pairs.get(j), b, a));
+    }
+
+    /** ペアの from を to に差し替えた新しいペア。 */
+    private Pair replaced(Pair pair, ParticipantId from, ParticipantId to) {
+        return pair.player1().equals(from)
+                ? new Pair(to, pair.player2())
+                : new Pair(pair.player1(), to);
+    }
+
+    /**
+     * 組み合わせのコスト。各コートの4人について、全6ペアの「これまでの同コート共起回数」の
+     * 重み({@link #pairCost})を足し合わせる。敵味方は区別しない(現場ではコート内で
+     * ペアを組み直して遊ぶことが多いため)。合計が小さいほど「新鮮な顔合わせ」になる。
+     */
+    private long arrangementCost(
+            List<Pair> pairs, int courtCount,
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, boolean convex) {
+        long cost = 0;
+        for (int court = 0; court < courtCount; court++) {
+            Pair a = pairs.get(court * 2);
+            Pair b = pairs.get(court * 2 + 1);
+            ParticipantId[] four = {a.player1(), a.player2(), b.player1(), b.player2()};
+            for (int i = 0; i < 4; i++) {
+                for (int j = i + 1; j < 4; j++) {
+                    cost += pairCost(pairGet(coCount, four[i], four[j]), convex);
+                }
+            }
+        }
+        return cost;
+    }
+
+    /** 決めた組み合わせを履歴に反映する(同じコートの4人の全ペアの共起を +1)。 */
     private void recordArrangement(
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount,
-            Pair pairA, Pair pairB) {
-        pairInc(partnerCount, pairA.player1(), pairA.player2());
-        pairInc(partnerCount, pairB.player1(), pairB.player2());
-        for (ParticipantId x : List.of(pairA.player1(), pairA.player2())) {
-            for (ParticipantId y : List.of(pairB.player1(), pairB.player2())) {
-                pairInc(opponentCount, x, y);
+            Map<ParticipantId, Map<ParticipantId, Integer>> coCount, Pair pairA, Pair pairB) {
+        List<ParticipantId> four = List.of(
+                pairA.player1(), pairA.player2(), pairB.player1(), pairB.player2());
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                pairInc(coCount, four.get(i), four.get(j));
             }
         }
     }
 
-    /** 既存の試合から味方・敵の履歴を復元する(セット追加・再編成で継続させるため)。 */
+    /** 既存の試合から同コート共起の履歴を復元する(セット追加・再編成で継続させるため)。 */
     private void seedPairHistory(
-            List<Match> matches,
-            Map<ParticipantId, Map<ParticipantId, Integer>> partnerCount,
-            Map<ParticipantId, Map<ParticipantId, Integer>> opponentCount) {
+            List<Match> matches, Map<ParticipantId, Map<ParticipantId, Integer>> coCount) {
         for (Match m : matches) {
-            recordArrangement(partnerCount, opponentCount, m.pairA(), m.pairB());
+            recordArrangement(coCount, m.pairA(), m.pairB());
         }
     }
 

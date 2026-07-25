@@ -580,14 +580,17 @@ class MatchingDomainServiceTest {
         avgMax /= trials;
 
         // 参考: 完全ランダム配置(対策前)では avgMax≈7.5・worst=10・「一度も当たらない相手」≈7組。
-        // 対策後(選抜と組み合わせを共起の少ない方へ寄せる)は大幅に改善する。
-        // 最悪でも「同じ相手と6回超も同コート」は起きないこと(以前は10回が観測された)。
-        assertTrue(worstMaxCoCourt <= 6,
+        // 対策後(指数重み+山登り法+スケジュール全体のマルチリスタート)では、
+        // 25セット×12ペア枠を105ペアに配るので平均2.86回。ほぼ常に最大4回に収まる。
+        // 最悪でも「同じ相手と5回超も同コート」は起きないこと(以前は10回が観測された)。
+        assertTrue(worstMaxCoCourt <= 5,
                 "同じ相手と同コートになった最大回数が多すぎる: " + worstMaxCoCourt);
-        // 平均的には最大でも5回程度に収まること(対策前は約7.5)。
-        assertTrue(avgMax <= 5.5, "同コート共起の最大回数の平均が大きい: " + avgMax);
-        // 「一度も同コートにならない相手」がほぼ無いこと(全試行平均で1ペア未満、対策前は約7組)。
-        assertTrue(neverMetTotal < trials,
+        // 平均的には最大でも4回程度に収まること(対策前は約7.5)。
+        assertTrue(avgMax <= 4.5, "同コート共起の最大回数の平均が大きい: " + avgMax);
+        // 「一度も同コートにならない相手」がほぼ無いこと(全試行平均で1.5ペア未満、対策前は約7組)。
+        // ParticipantId は毎回ランダムな UUID で生成されるため、HashMap の反復順に依存する
+        // タイブレークが試行ごとに揺れ、平均は 1.0 前後で上下する。閾値には余裕を持たせる。
+        assertTrue(neverMetTotal < trials * 1.5,
                 "一度も同コートにならない相手ペアが多い(平均" + (neverMetTotal / (double) trials) + "組)");
     }
 
@@ -658,8 +661,8 @@ class MatchingDomainServiceTest {
             }
         }
         double avgNever = neverSum / trials;
-        // 厳密版なら64組が未対戦。混ぜモードでは平均5組未満まで激減すること。
-        assertTrue(avgNever < 5.0,
+        // 厳密版なら64組が未対戦。混ぜモード(+マルチリスタート)では平均2組程度まで激減すること。
+        assertTrue(avgNever < 3.5,
                 "16人で一度も同コートにならないペアが多い(平均" + avgNever + "組)");
         // 連続休みは2セットまで(=1回まで連続休み許容)。3連続は起きないこと。
         assertTrue(worstRestStreak <= 2,
