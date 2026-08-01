@@ -2,6 +2,7 @@ package com.shuttlematch.presentation.api;
 
 import com.shuttlematch.application.InvalidCredentialsException;
 import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.application.TooManyRequestsException;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -49,6 +50,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
         return problem(HttpStatus.NOT_FOUND, "リソースが見つかりません", ex.getMessage());
+    }
+
+    /** 短時間に要求が集中(ミニゲームのスコア連投など)→ 429。 */
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ProblemDetail handleTooManyRequests(TooManyRequestsException ex) {
+        return problem(HttpStatus.TOO_MANY_REQUESTS, "リクエストが多すぎます", ex.getMessage());
     }
 
     /** 認証失敗 → 401。 */

@@ -88,3 +88,31 @@ DELETE /api/v1/rooms/{roomId}/push-subscriptions?expoToken=...   解除
 **動作確認**: ダミートークンで購読 → セット開始 → 本番ログに
 「セット開始を通知します: 宛先=N件」と、無効トークンなら「端末が無効になったため購読を削除します」
 が出る。`ssh ... 'sudo journalctl -u shuttlematch --since "10 minutes ago" | grep 通知'`
+
+## ミニゲームのランキング（2026-08-02 導入）
+
+`/game/{slug}` の各ミニゲームの**上位5件だけ**を DB に持つ（`game_scores`、V17）。
+昔のゲーセンのハイスコア表と同じで、ランクインしたら名前（最大8文字）を入れて登録する。
+
+```
+GET  /api/v1/games/{game}/ranking      上位5件
+POST /api/v1/games/{game}/ranking      {playerName, score} → ランクインしたか・順位・登録後の一覧
+```
+
+- `{game}` は **フロントの URL と同じスラッグ**（`flap` / `rain` / `coin` / `flick`）。
+  ゲームを増やすときは `MiniGame` enum に1行足せば API とランキングが揃う。
+- **ランクインしないスコアは保存しない**。登録のたびに6位以下を切り捨てるので、
+  1ゲームあたり常に5行しかない（RDS の容量を食わない）。
+- **同点は先に記録した方が上位**（後から同じ点でも追い落とせない）。判定は `Ranking.rankFor`。
+  フロントにも同じ規則の `lib/ranking.ts` があり、名前入力を出すかの先読みに使う。
+  **確定はサーバーの応答**（入力中に他の人に抜かれると `rankedIn=false` が返る）。
+- **認証は無い**（このアプリ全体にまだ無い）。荒らし対策は割り切って次の3点だけ:
+  1. 上位5件しか残さない
+  2. `MiniGame.maxScore`（99999）を超えるスコアは 400。実プレイの加点は1〜50点なので届かない
+  3. `ScoreSubmissionRateLimiter` が送信元 IP ごとに10秒1回に制限（超えたら 429）。
+     単一インスタンス運用なのでメモリで持つ（再起動で消えてよい）。
+     本番は CloudFront 経由なので `X-Forwarded-For` の先頭を見る。
+  **本気の改ざん（API を直接叩く）は防げない。**荒れたら `delete from game_scores where game='...'`。
+
+**動作確認**: `curl -s localhost:8080/api/v1/games/coin/ranking` と、
+`curl -X POST .../ranking -d '{"playerName":"てすと","score":100}'`。
