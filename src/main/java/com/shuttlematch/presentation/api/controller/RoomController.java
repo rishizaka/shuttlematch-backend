@@ -15,6 +15,7 @@ import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.presentation.api.request.CreateRoomRequest;
 import com.shuttlematch.presentation.api.request.QuickCreateRoomRequest;
+import com.shuttlematch.presentation.api.response.PublicRoomResponse;
 import com.shuttlematch.presentation.api.response.RoomResponse;
 
 import jakarta.validation.Valid;
@@ -91,14 +92,17 @@ public class RoomController {
     /**
      * ルーム一覧を取得する。条件はいずれも省略可(省略時は絞り込まない)。
      * heldFrom は開催日時がその時刻以上、heldTo は未満のルームに絞る(ISO-8601)。
+     * <p>
+     * 認証が無く誰でも叩けるため、返すのは「何が開催されているか」だけの
+     * {@link PublicRoomResponse}。roomId や shareCode は載せない(理由はそちらの javadoc)。
      */
     @GetMapping("/api/v1/rooms")
-    public List<RoomResponse> list(
+    public List<PublicRoomResponse> list(
             @RequestParam(name = "status", required = false) RoomStatus status,
             @RequestParam(name = "heldFrom", required = false) OffsetDateTime heldFrom,
             @RequestParam(name = "heldTo", required = false) OffsetDateTime heldTo) {
         return listSessionsUseCase.execute(status, heldFrom, heldTo).stream()
-                .map(RoomResponse::from)
+                .map(PublicRoomResponse::from)
                 .toList();
     }
 

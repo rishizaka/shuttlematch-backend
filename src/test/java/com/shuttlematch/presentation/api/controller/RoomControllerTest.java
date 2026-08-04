@@ -108,6 +108,24 @@ class RoomControllerTest {
     }
 
     @Test
+    @DisplayName("GET list: 公開IDと開催内容だけを返し、roomId・shareCode・参加者名は返さない")
+    void listDoesNotExposeRoomId() throws Exception {
+        Room room = sampleSession();
+        when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
+
+        mockMvc.perform(get("/api/v1/rooms"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("練習会"))
+                .andExpect(jsonPath("$[0].publicId").value(
+                        com.shuttlematch.presentation.api.response.PublicRoomId.of(room.id())))
+                // 認証が無いため、一覧から roomId が割れると誰でも削除・改変できてしまう。
+                .andExpect(jsonPath("$[0].id").doesNotExist())
+                .andExpect(jsonPath("$[0].shareCode").doesNotExist())
+                .andExpect(jsonPath("$[0].createdBy").doesNotExist())
+                .andExpect(jsonPath("$[0].participants").doesNotExist());
+    }
+
+    @Test
     @DisplayName("GET room: 存在しなければ 404")
     void getNotFound() throws Exception {
         when(getRoomUseCase.execute(any())).thenThrow(new ResourceNotFoundException("なし"));
