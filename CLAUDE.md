@@ -99,7 +99,7 @@ GET  /api/v1/games/{game}/ranking      上位5件
 POST /api/v1/games/{game}/ranking      {playerName, score} → ランクインしたか・順位・登録後の一覧
 ```
 
-- `{game}` は **フロントの URL と同じスラッグ**（`flap` / `rain` / `coin` / `flick`）。
+- `{game}` は **フロントの URL と同じスラッグ**（`flap` / `rain` / `coin` / `flick` / `ski`）。
   ゲームを増やすときは `MiniGame` enum に1行足せば API とランキングが揃う。
 - **ランクインしないスコアは保存しない**。登録のたびに6位以下を切り捨てるので、
   1ゲームあたり常に5行しかない（RDS の容量を食わない）。
@@ -108,7 +108,8 @@ POST /api/v1/games/{game}/ranking      {playerName, score} → ランクイン�
   **確定はサーバーの応答**（入力中に他の人に抜かれると `rankedIn=false` が返る）。
 - **認証は無い**（このアプリ全体にまだ無い）。荒らし対策は割り切って次の3点だけ:
   1. 上位5件しか残さない
-  2. `MiniGame.maxScore`（99999）を超えるスコアは 400。実プレイの加点は1〜50点なので届かない
+  2. `MiniGame.maxScore`（99999）を超えるスコアは 400。加点が1〜50点の4本はもちろん、
+     滑走距離×倍率で伸びる `ski` でも実プレイでは届かない（フロント側でも頭打ちにしてある）
   3. `ScoreSubmissionRateLimiter` が送信元 IP ごとに10秒1回に制限（超えたら 429）。
      単一インスタンス運用なのでメモリで持つ（再起動で消えてよい）。
      本番は CloudFront 経由なので `X-Forwarded-For` の先頭を見る。
