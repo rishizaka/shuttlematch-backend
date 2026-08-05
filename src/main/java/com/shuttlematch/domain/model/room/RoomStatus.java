@@ -22,4 +22,15 @@ public enum RoomStatus {
     public boolean allowsMatchGeneration() {
         return this == OPEN || this == GENERATED;
     }
+
+    /**
+     * 試合表への変更(セットの追加・開始・巻き戻し・再編成)が許可される状態か。
+     * <p>
+     * 終了したルームは記録として読むだけにする。一覧では終了したルームの roomId を
+     * 公開していて(過去の試合表は誰でも見られる)、認可がまだ無いため、
+     * 「読めるが変えられない」をここで担保している。
+     */
+    public boolean allowsMatchChanges() {
+        return this != CLOSED;
+    }
 }

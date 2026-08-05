@@ -36,6 +36,9 @@ public class AddSetsUseCase {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "セッションが見つかりません: " + roomId.value()));
+        if (!room.status().allowsMatchChanges()) {
+            throw new IllegalStateException("終了したセッションの試合表は変更できません");
+        }
 
         MatchSchedule existing = matchScheduleRepository.findByRoomId(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException(

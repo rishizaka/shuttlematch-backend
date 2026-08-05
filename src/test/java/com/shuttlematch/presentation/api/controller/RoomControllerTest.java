@@ -108,7 +108,7 @@ class RoomControllerTest {
     }
 
     @Test
-    @DisplayName("GET list: 公開IDと開催内容だけを返し、roomId・shareCode・参加者名は返さない")
+    @DisplayName("GET list: 開催中は公開IDと開催内容だけを返し、roomId・shareCode・参加者名は返さない")
     void listDoesNotExposeRoomId() throws Exception {
         Room room = sampleSession();
         when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
@@ -122,6 +122,22 @@ class RoomControllerTest {
                 .andExpect(jsonPath("$[0].id").doesNotExist())
                 .andExpect(jsonPath("$[0].shareCode").doesNotExist())
                 .andExpect(jsonPath("$[0].createdBy").doesNotExist())
+                .andExpect(jsonPath("$[0].participants").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET list: 終了したルームは roomId を返す(過去の試合表は誰でも見られる)")
+    void listExposesRoomIdForClosedRoom() throws Exception {
+        Room room = sampleSession();
+        room.close();
+        when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
+
+        mockMvc.perform(get("/api/v1/rooms"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("CLOSED"))
+                .andExpect(jsonPath("$[0].id").value(room.id().value().toString()))
+                // 終了していても shareCode と名簿は伏せたまま。
+                .andExpect(jsonPath("$[0].shareCode").doesNotExist())
                 .andExpect(jsonPath("$[0].participants").doesNotExist());
     }
 

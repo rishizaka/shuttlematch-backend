@@ -22,13 +22,25 @@ import org.junit.jupiter.api.Test;
 class RevertSetUseCaseTest {
 
     private FakeRepo repo;
+    private FakeRoomRepo roomRepo;
     private RevertSetUseCase useCase;
     private final RoomId roomId = RoomId.newId();
 
     @BeforeEach
     void setUp() {
         repo = new FakeRepo();
-        useCase = new RevertSetUseCase(repo);
+        roomRepo = new FakeRoomRepo();
+        roomRepo.save(openRoom());
+        useCase = new RevertSetUseCase(roomRepo, repo);
+    }
+
+    /** roomId をそのまま持つ、開催中(GENERATED 相当)のルーム。 */
+    private com.shuttlematch.domain.model.room.Room openRoom() {
+        return com.shuttlematch.domain.model.room.Room.reconstitute(
+                roomId, "code1234", "練習会", OffsetDateTime.parse("2026-06-30T09:00:00Z"),
+                null, null, 1, com.shuttlematch.domain.model.room.RoomStatus.GENERATED,
+                com.shuttlematch.domain.model.user.UserId.of(java.util.UUID.randomUUID()),
+                List.of());
     }
 
     private Match match(int setNumber, OffsetDateTime startedAt) {
@@ -76,6 +88,63 @@ class RevertSetUseCaseTest {
     void throwsWhenNoSchedule() {
         assertThatThrownBy(() -> useCase.execute(roomId, 1))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+
+    /** ルームの状態(終了済みか)だけを見るための最小のフェイク。 */
+    private static final class FakeRoomRepo
+            implements com.shuttlematch.domain.repository.RoomRepository {
+        private final java.util.Map<RoomId, com.shuttlematch.domain.model.room.Room> store =
+                new java.util.HashMap<>();
+
+        @Override
+        public com.shuttlematch.domain.model.room.Room save(
+                com.shuttlematch.domain.model.room.Room room) {
+            store.put(room.id(), room);
+            return room;
+        }
+
+        @Override
+        public void deleteById(RoomId roomId) {
+            store.remove(roomId);
+        }
+
+        @Override
+        public Optional<com.shuttlematch.domain.model.room.Room> findById(RoomId roomId) {
+            return Optional.ofNullable(store.get(roomId));
+        }
+
+        @Override
+        public Optional<com.shuttlematch.domain.model.room.Room> findByShareCode(String shareCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<com.shuttlematch.domain.model.room.Room> findByStatus(
+                com.shuttlematch.domain.model.room.RoomStatus status) {
+            return store.values().stream().filter(r -> r.status() == status).toList();
+        }
+
+        @Override
+        public int countCreatedSince(
+                com.shuttlematch.domain.model.user.UserId createdBy,
+                OffsetDateTime since) {
+            return 0;
+        }
+
+        @Override
+        public List<com.shuttlematch.domain.model.room.Room> search(
+                com.shuttlematch.domain.model.room.RoomStatus status,
+                OffsetDateTime heldFrom,
+                OffsetDateTime heldTo) {
+            return List.copyOf(store.values());
+        }
+
+        @Override
+        public List<com.shuttlematch.domain.model.room.Room> findNotClosedCreatedBefore(
+                OffsetDateTime before) {
+            return List.of();
+        }
     }
 
     private static final class FakeRepo implements MatchScheduleRepository {

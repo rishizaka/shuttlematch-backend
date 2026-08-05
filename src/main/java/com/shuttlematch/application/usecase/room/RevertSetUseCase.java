@@ -2,8 +2,10 @@ package com.shuttlematch.application.usecase.room;
 
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.match.MatchSchedule;
+import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
+import com.shuttlematch.domain.repository.RoomRepository;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,14 +17,25 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RevertSetUseCase {
 
+    private final RoomRepository roomRepository;
     private final MatchScheduleRepository matchScheduleRepository;
 
-    public RevertSetUseCase(MatchScheduleRepository matchScheduleRepository) {
+    public RevertSetUseCase(
+            RoomRepository roomRepository,
+            MatchScheduleRepository matchScheduleRepository) {
+        this.roomRepository = roomRepository;
         this.matchScheduleRepository = matchScheduleRepository;
     }
 
     @Transactional
     public MatchSchedule execute(RoomId roomId, int setNumber) {
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "セッションが見つかりません: " + roomId.value()));
+        if (!room.status().allowsMatchChanges()) {
+            throw new IllegalStateException("終了したセッションのセットは戻せません");
+        }
+
         MatchSchedule schedule = matchScheduleRepository.findByRoomId(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "試合スケジュールが見つかりません: room=" + roomId.value()));
