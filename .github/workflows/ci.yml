@@ -34,6 +34,7 @@ jobs:
           name: test-results
           path: build/reports/tests/test
           if-no-files-found: ignore
+          retention-days: 1
 
       - name: Upload jar
         uses: actions/upload-artifact@v4
@@ -41,6 +42,11 @@ jobs:
           name: app-jar
           path: build/libs/*.jar
           if-no-files-found: error
+          # build → deploy へ受け渡すだけなので、残す意味があるのは実行中の数分だけ。
+          # 既定の90日で溜めると Free プランの artifact 容量(500MB)をすぐ超え、
+          # アップロードが失敗してデプロイごと落ちる(2026-08-10 に発生)。
+          # ロールバックは EC2 上の app.jar.bak で行うので artifact は要らない。
+          retention-days: 1
 
   deploy:
     name: Deploy to EC2
