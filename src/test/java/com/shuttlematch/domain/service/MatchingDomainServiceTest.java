@@ -516,6 +516,149 @@ class MatchingDomainServiceTest {
         assertTrue(lateInFuture <= 3, "途中参加者が優先されすぎている: " + lateInFuture);
     }
 
+    /**
+     * スケジュール全体(observed のメンバーについて)の品質統計:
+     * {最大共起回数, 未共起ペア数, 出場回数の最大差, 最大連続休み}。
+     */
+    private int[] lifecycleStats(MatchSchedule schedule, List<ParticipantId> observed) {
+        Map<ParticipantId, Integer> idx = new HashMap<>();
+        for (int i = 0; i < observed.size(); i++) idx.put(observed.get(i), i);
+        int n = observed.size();
+        int[][] co = new int[n][n];
+        int[] play = new int[n];
+        Map<Integer, Set<Integer>> playingBySet = new java.util.TreeMap<>();
+        int maxSet = 0;
+        for (Match m : schedule.matches()) {
+            maxSet = Math.max(maxSet, m.setNumber());
+            List<ParticipantId> four = participantsOf(m);
+            for (int i = 0; i < 4; i++) {
+                Integer a = idx.get(four.get(i));
+                if (a == null) continue; // 早退者はスキップ
+                play[a]++;
+                playingBySet.computeIfAbsent(m.setNumber(), k -> new HashSet<>()).add(a);
+                for (int j = i + 1; j < 4; j++) {
+                    Integer b = idx.get(four.get(j));
+                    if (b == null) continue;
+                    co[a][b]++;
+                    co[b][a]++;
+                }
+            }
+        }
+        int maxCo = 0, never = 0;
+        for (int a = 0; a < n; a++) {
+            for (int b = a + 1; b < n; b++) {
+                maxCo = Math.max(maxCo, co[a][b]);
+                if (co[a][b] == 0) never++;
+            }
+        }
+        int pmin = Integer.MAX_VALUE, pmax = 0;
+        for (int a = 0; a < n; a++) {
+            pmin = Math.min(pmin, play[a]);
+            pmax = Math.max(pmax, play[a]);
+        }
+        int restStreak = 0;
+        for (int a = 0; a < n; a++) {
+            int rs = 0;
+            for (int set = 1; set <= maxSet; set++) {
+                if (playingBySet.getOrDefault(set, Set.of()).contains(a)) {
+                    rs = 0;
+                } else {
+                    rs++;
+                    restStreak = Math.max(restStreak, rs);
+                }
+            }
+        }
+        return new int[] {maxCo, never, pmax - pmin, restStreak};
+    }
+
+    @Test
+    @DisplayName("早退→再編成後も、混ざり(共起分散)・公平性・連続休み回避が全期間で保たれる")
+    void replanAfterLeaveKeepsMixingQuality() {
+        // 15人2コート25セットで10セット消化後に1人早退 → 再編成。
+        // 残った14人について、開始済み+再編成後を通した全期間の品質が
+        // 一括生成と同水準(共起max≈4・出場差1・連続休みなし)であることを統計で確認する。
+        int trials = 20;
+        double avgMax = 0;
+        int worstMax = 0, worstDiff = 0, worstRest = 0;
+        for (int t = 0; t < trials; t++) {
+            MatchingDomainService svc = new MatchingDomainService(new Random(t));
+            List<ParticipantId> pool = participants(15);
+            MatchSchedule s = svc.generate(roomId, pool, 2, 25);
+            s = withStartedSetsUpTo(s, 10);
+            List<ParticipantId> remaining = pool.subList(0, 14);
+            s = svc.replanFuture(s, remaining, 2);
+
+            int[] st = lifecycleStats(s, remaining);
+            avgMax += st[0];
+            worstMax = Math.max(worstMax, st[0]);
+            worstDiff = Math.max(worstDiff, st[2]);
+            worstRest = Math.max(worstRest, st[3]);
+        }
+        avgMax /= trials;
+        // 計測値: 共起max 平均4.00・最悪4、出場差1、連続休み1。余裕を持った閾値で回帰を検出する。
+        assertTrue(avgMax <= 4.6, "再編成後の共起maxの平均が大きい: " + avgMax);
+        assertTrue(worstMax <= 5, "再編成後の共起maxが大きい: " + worstMax);
+        assertTrue(worstDiff <= 1, "再編成をまたぐと出場回数が不公平: " + worstDiff);
+        assertTrue(worstRest <= 1, "再編成の境界で連続休みが発生: " + worstRest);
+    }
+
+    @Test
+    @DisplayName("再編成を繰り返しても混ざり・公平性は劣化しない")
+    void repeatedReplansDoNotDegradeQuality() {
+        // 5セットごとに4回再編成(顔ぶれ不変)。履歴の引き継ぎが正しければ
+        // 一括生成と同じ品質(共起max≈4)に収まる。
+        int trials = 20;
+        double avgMax = 0;
+        int worstMax = 0, worstDiff = 0, worstRest = 0;
+        for (int t = 0; t < trials; t++) {
+            MatchingDomainService svc = new MatchingDomainService(new Random(t * 3 + 500));
+            List<ParticipantId> pool = participants(15);
+            MatchSchedule s = svc.generate(roomId, pool, 2, 25);
+            for (int upTo = 5; upTo <= 20; upTo += 5) {
+                s = withStartedSetsUpTo(s, upTo);
+                s = svc.replanFuture(s, pool, 2);
+            }
+            int[] st = lifecycleStats(s, pool);
+            avgMax += st[0];
+            worstMax = Math.max(worstMax, st[0]);
+            worstDiff = Math.max(worstDiff, st[2]);
+            worstRest = Math.max(worstRest, st[3]);
+        }
+        avgMax /= trials;
+        // 計測値: 共起max 平均4.00・最悪4。
+        assertTrue(avgMax <= 4.6, "再編成の繰り返しで共起maxが劣化: " + avgMax);
+        assertTrue(worstMax <= 5, "再編成の繰り返しで共起maxが劣化: " + worstMax);
+        assertTrue(worstDiff <= 1, "再編成の繰り返しで出場回数が不公平: " + worstDiff);
+        assertTrue(worstRest <= 1, "再編成の繰り返しで連続休みが発生: " + worstRest);
+    }
+
+    @Test
+    @DisplayName("セット追加(25+10)でも一括35セット生成と同水準の混ざりを保つ(境界劣化なし)")
+    void addSetsKeepsMixingQualityAcrossBoundary() {
+        // 35セットでは全ペアの共起平均が4.0回になるため max5〜6 は構造的な値。
+        // 一括生成(平均≈5.4)と比べて境界による上乗せがないことを確認する。
+        int trials = 20;
+        double avgMax = 0;
+        int worstMax = 0, worstDiff = 0, worstRest = 0;
+        for (int t = 0; t < trials; t++) {
+            MatchingDomainService svc = new MatchingDomainService(new Random(t * 7 + 900));
+            List<ParticipantId> pool = participants(15);
+            MatchSchedule s = svc.generate(roomId, pool, 2, 25);
+            s = svc.addSets(s, pool, 2, 10);
+            int[] st = lifecycleStats(s, pool);
+            avgMax += st[0];
+            worstMax = Math.max(worstMax, st[0]);
+            worstDiff = Math.max(worstDiff, st[2]);
+            worstRest = Math.max(worstRest, st[3]);
+        }
+        avgMax /= trials;
+        // 計測値: 追加あり 平均5.55・最悪6 / 一括35セット 平均5.43・最悪6(=境界劣化なし)。
+        assertTrue(avgMax <= 6.2, "セット追加で共起maxが劣化: " + avgMax);
+        assertTrue(worstMax <= 7, "セット追加で共起maxが劣化: " + worstMax);
+        assertTrue(worstDiff <= 1, "セット追加をまたぐと出場回数が不公平: " + worstDiff);
+        assertTrue(worstRest <= 1, "セット追加の境界で連続休みが発生: " + worstRest);
+    }
+
     @Test
     @DisplayName("replanFuture: 在席が4×コート数未満ならコート数を自動で減らす")
     void replanReducesCourtsWhenNotEnoughPlayers() {
