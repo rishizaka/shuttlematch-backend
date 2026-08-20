@@ -1,5 +1,6 @@
 package com.shuttlematch.presentation.api;
 
+import com.shuttlematch.application.ForbiddenOperationException;
 import com.shuttlematch.application.InvalidCredentialsException;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.application.TooManyRequestsException;
@@ -56,6 +57,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TooManyRequestsException.class)
     public ProblemDetail handleTooManyRequests(TooManyRequestsException ex) {
         return problem(HttpStatus.TOO_MANY_REQUESTS, "リクエストが多すぎます", ex.getMessage());
+    }
+
+    /** 権限が無い操作(共有コード不一致など) → 403。 */
+    @ExceptionHandler(ForbiddenOperationException.class)
+    public ProblemDetail handleForbidden(ForbiddenOperationException ex) {
+        return problem(HttpStatus.FORBIDDEN, "操作が許可されていません", ex.getMessage());
     }
 
     /** 認証失敗 → 401。 */

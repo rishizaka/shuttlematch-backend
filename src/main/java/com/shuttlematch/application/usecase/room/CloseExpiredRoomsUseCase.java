@@ -11,14 +11,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 作成から一定時間が経過したルームを一括で終了する(履歴に送る)ユースケース。
- * スケジューラから定期的に呼ばれる。練習会は当日中に終わる想定のため、
- * 終了し忘れたルームを自動で過去のものにする。
+ * スケジューラから定期的に呼ばれ、終了し忘れたルームを自動で過去のものにする。
  */
 @Service
 public class CloseExpiredRoomsUseCase {
 
-    /** 作成からこの時間が経過したルームを自動で終了する。 */
-    public static final Duration ROOM_TTL = Duration.ofHours(12);
+    /**
+     * 作成からこの時間が経過したルームを自動で終了する。
+     * 前日夜に作ったルームで翌日の練習会をやる、当日の朝に作って夜まで続く、
+     * といった使われ方があるため、当日中(12時間)では短い。
+     */
+    public static final Duration ROOM_TTL = Duration.ofHours(36);
 
     private final RoomRepository roomRepository;
 

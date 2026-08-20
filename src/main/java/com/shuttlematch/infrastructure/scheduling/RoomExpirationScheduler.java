@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 期限切れルームの自動終了を定期実行するスケジューラ。
- * 毎時0分にチェックする。12時間TTLに対して日次(00:00)だと最大約23時間
- * 遅れて終了することになるため、毎時にしている。
+ * 毎時0分にチェックする。日次(00:00)だと最大約23時間遅れて終了することになり、
+ * TTL(36時間)に対して無視できない誤差になるため、毎時にしている。
  */
 @Component
 public class RoomExpirationScheduler {

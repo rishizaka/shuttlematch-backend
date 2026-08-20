@@ -1,7 +1,9 @@
 package com.shuttlematch.presentation.api.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -9,6 +11,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.shuttlematch.application.ForbiddenOperationException;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.application.usecase.room.CreateRoomCommand;
 import com.shuttlematch.application.usecase.room.CreateRoomUseCase;
@@ -195,19 +198,34 @@ class RoomControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE room: 204 でルームを削除する")
+    @DisplayName("DELETE room: 204 でルームを削除する(共有コードはそのまま渡る)")
     void deleteReturnsNoContent() throws Exception {
-        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID()))
+        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID())
+                        .param("shareCode", "abcd2345"))
                 .andExpect(status().isNoContent());
+
+        verify(deleteRoomUseCase).execute(any(RoomId.class), eq("abcd2345"));
     }
 
     @Test
     @DisplayName("DELETE room: 存在しなければ 404")
     void deleteNotFound() throws Exception {
         doThrow(new ResourceNotFoundException("なし"))
-                .when(deleteRoomUseCase).execute(any(RoomId.class));
+                .when(deleteRoomUseCase).execute(any(RoomId.class), any());
 
-        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID()))
+        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID())
+                        .param("shareCode", "abcd2345"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("DELETE room: 共有コードが一致しなければ 403")
+    void deleteForbidden() throws Exception {
+        doThrow(new ForbiddenOperationException("共有コードが一致しないため削除できません"))
+                .when(deleteRoomUseCase).execute(any(RoomId.class), any());
+
+        mockMvc.perform(delete("/api/v1/rooms/{roomId}", UUID.randomUUID())
+                        .param("shareCode", "wrongcode"))
+                .andExpect(status().isForbidden());
     }
 }

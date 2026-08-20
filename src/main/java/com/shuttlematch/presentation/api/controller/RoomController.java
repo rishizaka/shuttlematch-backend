@@ -123,10 +123,17 @@ public class RoomController {
         return RoomResponse.from(closeSessionUseCase.execute(RoomId.of(roomId)));
     }
 
-    /** ルームを配下データ(参加者・固定ペア・試合表)ごと完全に削除する。 */
+    /**
+     * ルームを配下データ(参加者・固定ペア・試合表)ごと完全に削除する。
+     * <p>
+     * 共有コードをクエリパラメータで必須にしている。認証が無いなかで
+     * 「リンクを知っている人だけ」に絞るため({@link DeleteRoomUseCase} に理由を書いてある)。
+     */
     @DeleteMapping("/api/v1/rooms/{roomId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID roomId) {
-        deleteRoomUseCase.execute(RoomId.of(roomId));
+    public void delete(
+            @PathVariable UUID roomId,
+            @RequestParam(name = "shareCode", required = false) String shareCode) {
+        deleteRoomUseCase.execute(RoomId.of(roomId), shareCode);
     }
 }

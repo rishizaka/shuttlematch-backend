@@ -15,8 +15,10 @@ import java.time.OffsetDateTime;
  * 既にそのルームを知っているクライアントだけが自分の roomId と突き合わせてリンクを張れる。
  * <p>
  * <b>終了したルームだけは {@code id} を返す。</b>過去の試合表は記録として誰でも見られる
- * ようにするため。終了したルームは削除も試合表の変更もできないので(RoomStatus の
- * {@code allowsMatchChanges} と DeleteRoomUseCase)、roomId が知られても壊されない。
+ * ようにするため。終了したルームは試合表を変更できず(RoomStatus の
+ * {@code allowsMatchChanges})、削除には共有コードが要る(DeleteRoomUseCase)ので、
+ * roomId が知られても壊されない。<b>shareCode はここに載せないこと</b>
+ * (載せると一覧から順に削除できてしまう)。
  */
 public record PublicRoomResponse(
         String publicId,

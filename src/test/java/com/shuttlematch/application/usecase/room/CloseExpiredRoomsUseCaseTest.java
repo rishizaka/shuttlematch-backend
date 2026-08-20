@@ -65,7 +65,7 @@ class CloseExpiredRoomsUseCaseTest {
     }
 
     @Test
-    @DisplayName("リポジトリへ渡す閾値は now - TTL(12時間)になる")
+    @DisplayName("リポジトリへ渡す閾値は now - TTL(36時間)になる")
     void queriesWithTtlThreshold() {
         OffsetDateTime now = OffsetDateTime.now();
 
