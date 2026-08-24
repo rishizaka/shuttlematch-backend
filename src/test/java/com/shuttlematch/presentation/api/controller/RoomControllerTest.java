@@ -228,4 +228,49 @@ class RoomControllerTest {
                         .param("shareCode", "wrongcode"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @DisplayName("POST leave-bulk: 参加者IDの配列を渡すとまとめて早退にする")
+    void leaveBulkMarksAllAsLeft() throws Exception {
+        UUID roomId = UUID.randomUUID();
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        Room updated = Room.reconstitute(
+                RoomId.of(roomId), "code1234", "テスト", OffsetDateTime.now(), null, null, 1,
+                RoomStatus.GENERATED, UserId.of(UUID.randomUUID()), java.util.List.of());
+        when(markParticipantLeftUseCase.executeMany(any(RoomId.class), any()))
+                .thenReturn(updated);
+
+        String body = String.format(
+                "{\"participantIds\":[\"%s\",\"%s\"]}", p1, p2);
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/leave-bulk", roomId)
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk());
+
+        verify(markParticipantLeftUseCase).executeMany(
+                eq(RoomId.of(roomId)),
+                eq(java.util.List.of(
+                        com.shuttlematch.domain.model.room.ParticipantId.of(p1),
+                        com.shuttlematch.domain.model.room.ParticipantId.of(p2))));
+    }
+
+    @Test
+    @DisplayName("POST leave-bulk: 空配列は 400")
+    void leaveBulkRejectsEmptyList() throws Exception {
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/leave-bulk", UUID.randomUUID())
+                        .contentType("application/json").content("{\"participantIds\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST leave-bulk: 存在しない参加者を含むと 404 で、誰も早退にならない")
+    void leaveBulkNotFound() throws Exception {
+        doThrow(new ResourceNotFoundException("参加者が見つかりません"))
+                .when(markParticipantLeftUseCase).executeMany(any(RoomId.class), any());
+
+        String body = String.format("{\"participantIds\":[\"%s\"]}", UUID.randomUUID());
+        mockMvc.perform(post("/api/v1/rooms/{roomId}/participants/leave-bulk", UUID.randomUUID())
+                        .contentType("application/json").content(body))
+                .andExpect(status().isNotFound());
+    }
 }

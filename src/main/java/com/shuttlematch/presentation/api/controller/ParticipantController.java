@@ -8,6 +8,7 @@ import com.shuttlematch.application.usecase.room.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RemoveParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RenameParticipantUseCase;
 import com.shuttlematch.presentation.api.request.JoinRoomRequest;
+import com.shuttlematch.presentation.api.request.MarkParticipantsLeftRequest;
 import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
 import com.shuttlematch.presentation.api.response.JoinResponse;
 import com.shuttlematch.domain.model.room.Participant;
@@ -106,6 +107,21 @@ public class ParticipantController {
     public RoomResponse leave(@PathVariable UUID roomId, @PathVariable UUID participantId) {
         Room room = markParticipantLeftUseCase.execute(
                 RoomId.of(roomId), ParticipantId.of(participantId));
+        return RoomResponse.from(room);
+    }
+
+    /**
+     * 複数の参加者をまとめて早退にする。1回の読み込み・保存で反映するため、
+     * この {@code /leave} を選んだ人数ぶん並行で呼ぶより安全
+     * ({@link MarkParticipantLeftUseCase} の javadoc を参照)。
+     */
+    @PostMapping("/leave-bulk")
+    public RoomResponse leaveBulk(
+            @PathVariable UUID roomId,
+            @Valid @RequestBody MarkParticipantsLeftRequest request) {
+        List<ParticipantId> participantIds =
+                request.participantIds().stream().map(ParticipantId::of).toList();
+        Room room = markParticipantLeftUseCase.executeMany(RoomId.of(roomId), participantIds);
         return RoomResponse.from(room);
     }
 
