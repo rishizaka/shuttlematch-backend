@@ -8,7 +8,7 @@ import com.shuttlematch.application.usecase.room.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RemoveParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RenameParticipantUseCase;
 import com.shuttlematch.presentation.api.request.JoinRoomRequest;
-import com.shuttlematch.presentation.api.request.MarkParticipantsLeftRequest;
+import com.shuttlematch.presentation.api.request.ParticipantIdsRequest;
 import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
 import com.shuttlematch.presentation.api.response.JoinResponse;
 import com.shuttlematch.domain.model.room.Participant;
@@ -118,7 +118,7 @@ public class ParticipantController {
     @PostMapping("/leave-bulk")
     public RoomResponse leaveBulk(
             @PathVariable UUID roomId,
-            @Valid @RequestBody MarkParticipantsLeftRequest request) {
+            @Valid @RequestBody ParticipantIdsRequest request) {
         List<ParticipantId> participantIds =
                 request.participantIds().stream().map(ParticipantId::of).toList();
         Room room = markParticipantLeftUseCase.executeMany(RoomId.of(roomId), participantIds);
@@ -130,6 +130,20 @@ public class ParticipantController {
     public RoomResponse reactivate(@PathVariable UUID roomId, @PathVariable UUID participantId) {
         Room room = reactivateParticipantUseCase.execute(
                 RoomId.of(roomId), ParticipantId.of(participantId));
+        return RoomResponse.from(room);
+    }
+
+    /**
+     * 複数の参加者をまとめて復帰(在席状態を ACTIVE に戻す)させる。
+     * まとめて早退にする leave-bulk と同じ理由で、1回の読み込み・保存にまとめている。
+     */
+    @PostMapping("/reactivate-bulk")
+    public RoomResponse reactivateBulk(
+            @PathVariable UUID roomId,
+            @Valid @RequestBody ParticipantIdsRequest request) {
+        List<ParticipantId> participantIds =
+                request.participantIds().stream().map(ParticipantId::of).toList();
+        Room room = reactivateParticipantUseCase.executeMany(RoomId.of(roomId), participantIds);
         return RoomResponse.from(room);
     }
 
