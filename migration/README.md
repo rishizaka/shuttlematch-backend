@@ -100,7 +100,22 @@ AWS(EC2 `shuttlematch-app` / RDS `shuttlematch-db` / CloudFront)は稼働中だ�
 - モバイルアプリからの実機での動作確認(接続先は`s-match.net`のままなので理屈上は無変更で動くはずだが、
   実機での確認はまだしていない)
 
+## Phase 4 完了(2026-08-31) — CI/CDをVPS向けに切替
+
+- [x] 両リポジトリの`ci.yml`からAWS OIDC・SG一時開放のステップを削除、VPSへの直接SSHデプロイに変更
+- [x] frontendはnode_modules転送・sha256比較の仕組みを撤去、VPS上で`npm ci`する方式に単純化
+      (VPS 2GBはメモリに余裕がありEC2 912MBのようなOOMの心配がないため)
+- [x] GitHub Secrets差し替え: `VPS_HOST`/`VPS_SSH_KEY`(backend/frontendそれぞれ専用鍵)を追加、
+      `AWS_ROLE_ARN`/`EC2_SG_ID`/`EC2_HOST`/`EC2_SSH_KEY`を削除
+- [x] デプロイ専用鍵を新規作成し、VPSの`ubuntu`ユーザーのauthorized_keysに追加
+      (`~/.ssh/shuttlematch-vps-deploy-backend`, `~/.ssh/shuttlematch-vps-deploy-frontend`)
+- [x] 両リポジトリのCLAUDE.mdを更新(VPS向け手順、オレンジ雲が正になった旨など)
+- [x] push後の実CI実行は**GitHub Actionsのartifact容量制限(既知の問題、このセッション中ずっと発生)で
+      build時点で失敗**し、deployジョブの自動検証はできなかった。そのため、新しいデプロイ専用鍵を使って
+      同じ手順を手動で再現し、backend/frontendとも正常にデプロイできることを確認済み。
+      容量が回復(GitHub側で6〜12時間ごとに再計算)すれば以降のpushで自動デプロイが動くはず。
+
 ## 未着手
 
-- Phase 4(CI/CD切替): 両リポジトリの`ci.yml`からAWS OIDC関連を削除し、VPSへのデプロイに切替
 - Phase 5(AWS解約): 2週間の安定運用確認後、RDS/EC2/CloudFront/OIDCロールを削除
+  (目安: 2026-09-14以降)
