@@ -42,3 +42,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# 移行作業中のみ使うローカル秘密情報(VPSのDBパスワード等)。コミットしない
+migration/.secrets/

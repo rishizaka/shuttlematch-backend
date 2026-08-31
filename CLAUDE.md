@@ -14,23 +14,25 @@ ShuttleMatch のバックエンド（Java 21 / Spring Boot 4 / Gradle Kotlin DSL
   - jar を scp → `app.jar.bak` に退避 → 差し替え → `systemctl restart`
   - health check を最大300秒リトライ。**失敗したら `app.jar.bak` へ自動ロールバック**して再起動。
   - 最後に `https://s-match.net/api/*` の到達を確認。
-- **SSH の到達性**: EC2 の 22番は自宅IP(`14.8.61.161/32`)にしか開いていない。runner は
-  GitHub OIDC で IAM ロール `github-actions-shuttlematch-deploy` を AssumeRole し、
-  自分の IP を /32 で SG に一時追加 → 完了後（失敗時も `if: always()`）必ず revoke する。
-  **22番を常時開放しない設計なので、この仕組みを外さないこと。**
-- Secrets: `EC2_HOST` / `EC2_SSH_KEY`（デプロイ専用 ed25519 鍵）/ `AWS_ROLE_ARN` / `EC2_SG_ID`。
-  デプロイ鍵は EC2 の `~/.ssh/authorized_keys` に `github-actions-deploy@shuttlematch` として登録済み。
-  ローテーションする場合は鍵の再生成 → authorized_keys 差し替え → `gh secret set EC2_SSH_KEY`。
+- **SSH の到達性**: さくらのVPSはSSHを常時開けたまま（鍵認証のみ・パスワード認証は無効化済み）。
+  EC2時代のようなIP一時開放・OIDC AssumeRoleの仕組みは不要になった(2026-08-31 AWS→VPS移行で撤去)。
+- Secrets: `VPS_HOST` / `VPS_SSH_KEY`（デプロイ専用 ed25519 鍵）。
+  デプロイ鍵は VPS の `~/.ssh/authorized_keys` に `github-actions-deploy@shuttlematch-vps` として登録済み。
+  ローテーションする場合は鍵の再生成 → authorized_keys 差し替え → `gh secret set VPS_SSH_KEY`。
 
 **本番環境**
-- EC2 インスタンス `shuttlematch-app`（`3.113.92.223`, ap-northeast-1, t3.micro）
-- SSH: `ssh -i ~/.ssh/shuttlematch-key.pem ec2-user@3.113.92.223`（passwordless sudo 可）
+- さくらのVPS `160.16.52.211`（東京第2ゾーン、2GB、Ubuntu 24.04 LTS）
+- SSH: `ssh -i ~/.ssh/shuttlematch-vps-key ubuntu@160.16.52.211`（sudoはNOPASSWD設定済み）
 - systemd: `shuttlematch.service`（`java -jar ~/app.jar`、EnvFile `/etc/shuttlematch/app.env`、8080 で待受）
-- frontend は同じ EC2 上の別サービス（3000）。詳細は `shuttlematch-frontend` の CLAUDE.md 参照。
-- 公開URL: **https://s-match.net**。CloudFront `E2ZAQ39VPHE72R` が `/api/*` を 8080 に振り分けるので、
-  API も同一オリジン（`https://s-match.net/api/...`）で叩ける。
+- frontend は同じVPS上の別サービス（3000）。詳細は `shuttlematch-frontend` の CLAUDE.md 参照。
+- 公開URL: **https://s-match.net**。Cloudflare Tunnel（`cloudflared`、トンネル名`shuttlematch`）が
+  `/etc/cloudflared/config.yml` の設定でVPSの3000番(frontend)へ振り分ける。frontendの`serve.mjs`が
+  `/api/*` をさらに8080番(backend)へ中継するので、API も同一オリジン（`https://s-match.net/api/...`）で叩ける。
+  VPSのinboundはSSH以外すべてufwで閉じている(Tunnelはアウトバウンド接続なので開放不要)。
 - CORS 許可オリジンは EnvFile の `APP_CORS_ALLOWED_ORIGINS`（カンマ区切り）。ドメインを追加したら
   ここに足して `sudo systemctl restart shuttlematch` が必要。
+- 旧AWS(EC2/RDS/CloudFront)は2026-08-31の切替後もしばらく残置(切り戻し用)。
+  移行の経緯・落とし穴は `migration/README.md` を参照。
 
 **手順（backend のコードを変更したとき）**
 
@@ -39,17 +41,17 @@ ShuttleMatch のバックエンド（Java 21 / Spring Boot 4 / Gradle Kotlin DSL
 cd ~/Develop/shuttlematch
 JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew bootJar   # build/libs/*.jar を生成
 
-# 2. EC2 へ転送し、現行 app.jar を app.jar.bak にローテートして差し替え
-KEY=~/.ssh/shuttlematch-key.pem; HOST=3.113.92.223
+# 2. VPS へ転送し、現行 app.jar を app.jar.bak にローテートして差し替え
+KEY=~/.ssh/shuttlematch-vps-key; HOST=160.16.52.211
 JAR=$(ls -t build/libs/*.jar | grep -v plain | head -1)
-scp -i "$KEY" "$JAR" ec2-user@$HOST:/tmp/app.jar
-ssh -i "$KEY" ec2-user@$HOST '
+scp -i "$KEY" "$JAR" ubuntu@$HOST:/tmp/app.jar
+ssh -i "$KEY" ubuntu@$HOST '
   set -e; cd ~
   cp app.jar app.jar.bak
   mv /tmp/app.jar app.jar'
 
 # 3. 再起動 & 確認
-ssh -i "$KEY" ec2-user@$HOST '
+ssh -i "$KEY" ubuntu@$HOST '
   sudo systemctl restart shuttlematch
   sleep 5
   systemctl is-active shuttlematch
@@ -112,7 +114,9 @@ POST /api/v1/games/{game}/ranking      {playerName, score} → ランクイン�
      滑走距離×倍率で伸びる `ski` でも実プレイでは届かない（フロント側でも頭打ちにしてある）
   3. `ScoreSubmissionRateLimiter` が送信元 IP ごとに10秒1回に制限（超えたら 429）。
      単一インスタンス運用なのでメモリで持つ（再起動で消えてよい）。
-     本番は CloudFront 経由なので `X-Forwarded-For` の先頭を見る。
+     本番は Cloudflare Tunnel 経由なので `CF-Connecting-IP`（Cloudflareが上書きするので
+     クライアントは偽装できない）を優先し、無ければ `X-Forwarded-For` の先頭にフォールバックする
+     （2026-08-31 AWS→VPS移行時に対応。切替直後に実地で429が正しく返ることを確認済み）。
   **本気の改ざん（API を直接叩く）は防げない。**荒れたら `delete from game_scores where game='...'`。
 
 **動作確認**: `curl -s localhost:8080/api/v1/games/coin/ranking` と、

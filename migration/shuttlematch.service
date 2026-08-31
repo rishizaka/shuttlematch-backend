@@ -1,0 +1,15 @@
+[Unit]
+Description=ShuttleMatch API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=ubuntu
+EnvironmentFile=/etc/shuttlematch/app.env
+ExecStart=/usr/bin/java -jar /home/ubuntu/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -68,10 +68,16 @@ public class GameRankingController {
     }
 
     /**
-     * 送信元の識別子。本番は CloudFront 経由なので X-Forwarded-For の先頭(元のクライアント)を使う。
-     * 偽装できるヘッダーだが、レート制限自体が軽い歯止めなので割り切る。
+     * 送信元の識別子。Cloudflare 経由なら CF-Connecting-IP(Cloudflare が上書きするので
+     * クライアントが偽装できない)を優先し、無ければ CloudFront 由来の X-Forwarded-For の
+     * 先頭(元のクライアント)、それも無ければ直結のリモートアドレスを使う。
+     * いずれにせよレート制限自体が軽い歯止めなので、完全な偽装耐性までは求めない。
      */
     private String clientKey(HttpServletRequest request) {
+        String cfConnectingIp = request.getHeader("CF-Connecting-IP");
+        if (cfConnectingIp != null && !cfConnectingIp.isBlank()) {
+            return cfConnectingIp.trim();
+        }
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
             return forwarded.split(",")[0].trim();
