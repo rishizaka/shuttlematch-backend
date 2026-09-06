@@ -493,11 +493,11 @@ class MatchingDomainServiceTest {
     }
 
     @Test
-    @DisplayName("replanFuture: 途中参加者は優先されず、公平(差は1以内)に収まる")
+    @DisplayName("replanFuture: 途中参加者は優先されず、通常の輪番に乗って休みも入る")
     void replanAddsLateComerWithoutPriority() {
         MatchingDomainService service = serviceWithSeed(23L);
         List<ParticipantId> pool = participants(6);
-        MatchSchedule base = service.generate(roomId, pool, 1, 6);
+        MatchSchedule base = service.generate(roomId, pool, 1, 8);
         MatchSchedule withStarted = withStartedSetsUpTo(base, 3);
 
         ParticipantId late = ParticipantId.newId();
@@ -506,14 +506,54 @@ class MatchingDomainServiceTest {
 
         MatchSchedule replanned = service.replanFuture(withStarted, active, 1);
 
-        // 途中参加者は未開始セット(4〜6)にだけ登場しうる
+        // 未開始セットは 4〜8 の5セット。7人1コート(毎セット3人休み)なので
+        // 途中参加者も帳尻合わせで出ずっぱりにならず、休みが入る。
+        long lateRests = replanned.matches().stream()
+                .filter(m -> m.setNumber() > 3)
+                .mapToInt(Match::setNumber).distinct()
+                .filter(s -> replanned.matches().stream()
+                        .filter(m -> m.setNumber() == s)
+                        .noneMatch(m -> participantsOf(m).contains(late)))
+                .count();
+        assertTrue(lateRests >= 1, "途中参加者に休みが1回も入っていない: rests=" + lateRests);
+
+        // 優先出場もしない: 未開始5セットを独占しない。
         long lateInFuture = replanned.matches().stream()
                 .filter(m -> m.setNumber() > 3)
                 .filter(m -> participantsOf(m).contains(late))
                 .count();
-        // 3セット分の未開始で1コート(4枠)。全既存が実績3〜4のところに横入りなので、
-        // 優先されない=全セット独占はしない。
-        assertTrue(lateInFuture <= 3, "途中参加者が優先されすぎている: " + lateInFuture);
+        assertTrue(lateInFuture <= 4, "途中参加者が優先されすぎている: " + lateInFuture);
+    }
+
+    @Test
+    @DisplayName("replanFuture: 終盤の途中参加でも『休みゼロ』にならない(2コート11人・実データ再現)")
+    void lateComerInLateSessionStillGetsRests() {
+        // 2026-09-06 昼練の再現: 11人2コート30セット、セット11まで進んだ時点で11人目が参加。
+        // 旧実装(最小回数シード)では11人目がセット12以降を全部出場し休みゼロだった。
+        for (long seed = 0; seed < 15; seed++) {
+            MatchingDomainService svc = serviceWithSeed(seed);
+            List<ParticipantId> base10 = participants(10);
+            MatchSchedule sch = svc.generate(roomId, base10, 2, 30);
+            MatchSchedule withStarted = withStartedSetsUpTo(sch, 11);
+
+            ParticipantId late = ParticipantId.newId();
+            List<ParticipantId> active = new java.util.ArrayList<>(base10);
+            active.add(late);
+
+            MatchSchedule replanned = svc.replanFuture(withStarted, active, 2);
+
+            // 未開始セット(12〜30)だけを見る。
+            List<Set<ParticipantId>> futureResting = restingPerSet(replanned, active)
+                    .subList(11, replanned.setCount());
+            long lateRests = futureResting.stream().filter(r -> r.contains(late)).count();
+            // 未開始は19セット。11人2コート(毎セット3人休み)の通常輪番なら
+            // 4〜5回は休むはず。最低でも複数回入ることを固定する。
+            assertTrue(lateRests >= 3,
+                    "seed=" + seed + " 途中参加者の休みが少なすぎる: " + lateRests + "/19");
+            // 連続休みは持ち込まない。
+            long consec = countConsecutiveRests(futureResting);
+            assertEquals(0, consec, "seed=" + seed + " で連続休みが発生");
+        }
     }
 
     /**

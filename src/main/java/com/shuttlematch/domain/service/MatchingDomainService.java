@@ -138,7 +138,8 @@ public class MatchingDomainService {
         List<Match> added = bestOfRestarts(
                 pool, existing.matches(), isLargeSearch(courtCount) ? 2 : SCHEDULE_RESTARTS, () -> {
             // 既存の出場実績・連続出場・共起履歴を引き継ぐ(公平性と偏り回避が
-            // 境界をまたいで効くように)。新規参加者は優先させない(最小回数にシード)。
+            // 境界をまたいで効くように)。新規参加者は最大回数にシードして通常輪番に乗せる
+            // (優先出場も、遅刻分の埋め合わせ出場もさせない)。
             Map<ParticipantId, Map<ParticipantId, Integer>> coCount = new HashMap<>();
             seedPairHistory(existing.matches(), coCount);
             return buildSets(
@@ -167,7 +168,8 @@ public class MatchingDomainService {
      * <ul>
      *   <li>開始済みセットは履歴として不変。ここには一切手を加えない。</li>
      *   <li>未開始セットは破棄し、開始済みの出場実績を引き継いで作り直す。</li>
-     *   <li>新規(途中参加)は優先させない。既存の最小回数にシードして横入りさせる。</li>
+     *   <li>新規(途中参加)は既存の最大回数にシードして、そのまま通常の輪番に乗せる。
+     *       優先出場もさせないし、遅刻分を埋め合わせる連続出場もさせない(参加費で調整する前提)。</li>
      *   <li>在席者が少なくコートを埋められない場合は、未来のコート数を自動で減らす。</li>
      * </ul>
      * 合計セット数は元のスケジュールと同じに保つ。
@@ -278,7 +280,12 @@ public class MatchingDomainService {
 
     /**
      * 参照試合から出場回数を集計する。プールに居るが未出場の参加者(途中参加など)は
-     * 「既に出ている人の最小回数」にシードして、優先(キャッチアップ)させない。
+     * 「既に出ている人の最大回数」にシードして、通常の輪番へそのまま乗せる。
+     * <p>
+     * 最小回数にシードすると、途中参加者は出場回数が他に追いつくまで毎セット選抜先頭に
+     * 立ち続け、残りセットが少ないと「一度も休めないまま終了」になる(2コート・終盤参加で
+     * 実際に発生した)。遅刻分の埋め合わせ出場はさせず、参加時点で「帳尻が合っている人」
+     * として扱う。埋め合わせない結果、残りセットでの出場はベテランよりやや少なめになる。
      */
     private Map<ParticipantId, Integer> seededPlayCounts(
             List<ParticipantId> pool, List<Match> sourceMatches) {
@@ -288,14 +295,14 @@ public class MatchingDomainService {
                 appeared.merge(p, 1, Integer::sum);
             }
         }
-        int baseline = pool.stream()
+        int lateComerSeed = pool.stream()
                 .filter(appeared::containsKey)
                 .mapToInt(appeared::get)
-                .min()
+                .max()
                 .orElse(0);
         Map<ParticipantId, Integer> playCount = new HashMap<>();
         for (ParticipantId p : pool) {
-            playCount.put(p, appeared.getOrDefault(p, baseline));
+            playCount.put(p, appeared.getOrDefault(p, lateComerSeed));
         }
         return playCount;
     }
