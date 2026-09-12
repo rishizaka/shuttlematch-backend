@@ -31,7 +31,8 @@ ShuttleMatch のバックエンド（Java 21 / Spring Boot 4 / Gradle Kotlin DSL
   VPSのinboundはSSH以外すべてufwで閉じている(Tunnelはアウトバウンド接続なので開放不要)。
 - CORS 許可オリジンは EnvFile の `APP_CORS_ALLOWED_ORIGINS`（カンマ区切り）。ドメインを追加したら
   ここに足して `sudo systemctl restart shuttlematch` が必要。
-- 旧AWS(EC2/RDS/CloudFront)は2026-08-31の切替後もしばらく残置(切り戻し用)。
+- 旧AWS(EC2/RDS/CloudFront/ACM証明書/IAM OIDCロール/SG)は2026-09-12に解約済み。
+  RDSの最終スナップショットのみ`shuttlematch-db-final-20260912`として残してある。
   移行の経緯・落とし穴は `migration/README.md` を参照。
 
 **手順（backend のコードを変更したとき）**

@@ -90,7 +90,7 @@
 - [x] 旧CloudFront・EC2・RDSは削除せず維持(切り戻し先として2週間残す、Phase 5で解約予定)
 
 **現在の本番環境**: さくらのVPS(Ubuntu 24.04, `160.16.52.211`) + Cloudflare Tunnel。
-AWS(EC2 `shuttlematch-app` / RDS `shuttlematch-db` / CloudFront)は稼働中だが**もう本番トラフィックは受けていない**。
+AWSは2026-09-12に解約済み(下記Phase 5参照)。
 
 ## まだユーザー側の作業が必要なもの
 
@@ -115,7 +115,26 @@ AWS(EC2 `shuttlematch-app` / RDS `shuttlematch-db` / CloudFront)は稼働中だ�
       同じ手順を手動で再現し、backend/frontendとも正常にデプロイできることを確認済み。
       容量が回復(GitHub側で6〜12時間ごとに再計算)すれば以降のpushで自動デプロイが動くはず。
 
-## 未着手
+## Phase 5 完了(2026-09-12) — AWS解約
 
-- Phase 5(AWS解約): 2週間の安定運用確認後、RDS/EC2/CloudFront/OIDCロールを削除
-  (目安: 2026-09-14以降)
+12日間の安定運用(CI/CDの自動デプロイも本番で正常動作)を確認したうえで実施。
+
+- [x] RDS: 最終スナップショット`shuttlematch-db-final-20260912`を取得 → インスタンス削除
+      (2026-07-31取得の`shuttlematch-db-manual-20260801-0213`と合わせて2世代を保持)
+- [x] EC2 `i-01f606364ee122d2c`(`shuttlematch-app`)を終了
+- [x] Elastic IP `3.113.92.223` を解放(EC2終了だけでは自動解放されない。放置課金を回避)
+- [x] EBSボリューム: EC2終了時に自動削除されたことを確認(DeleteOnTermination)
+- [x] CloudFront `E2ZAQ39VPHE72R`: 無効化(反映まで数分) → 削除
+- [x] ACM証明書(`s-match.net`, us-east-1)を削除(CloudFront削除後)
+- [x] セキュリティグループ`shuttlematch-ec2-sg`/`shuttlematch-rds-sg`を削除
+      (ec2-sgは終了直後ENI依存で一度失敗、少し待って再実行で成功)
+- [x] IAMロール`github-actions-shuttlematch-deploy`のインラインポリシー`manage-deploy-ssh-rule`を
+      削除してからロール自体を削除
+- [x] AWS Budgetsのアラートは残置(解約漏れ・想定外課金の検知用)
+- [x] 全リソースの解約を最終確認(EC2/RDS/CloudFront/ACM/EIP/SG/IAMロール、いずれも0件)
+
+**これでAWSアカウント`264595825358`に残るのはRDSスナップショット2世代とBudgetsのみ。
+月額課金はほぼ$0になるはず(次回請求で確認)。**
+
+移行プロジェクトはこれで完了。今後インフラ費用の話が出たら、この移行の経緯
+([[infra-migration-considered-not-done]])を踏まえて判断する。
