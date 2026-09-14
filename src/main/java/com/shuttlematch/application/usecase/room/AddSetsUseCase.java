@@ -45,8 +45,12 @@ public class AddSetsUseCase {
                         "試合スケジュールがまだ生成されていません: room=" + roomId.value()));
 
         int courtCount = room.courtCount() != null ? room.courtCount() : 1;
+        // 在席中(ACTIVE)の参加者だけを対象にする。participantIds() だと早退済み(LEFT)の
+        // 人も含んでしまい、早退→再編成で除外したはずの人が追加セットに復活してしまう
+        // (GenerateMatchesUseCase・QuickCreateRoomUseCase・ReplanFutureSetsUseCase は
+        // いずれも activeParticipantIds() を使っており、ここだけ揃っていなかった)。
         MatchSchedule updated = matchingDomainService.addSets(
-                existing, room.participantIds(), courtCount, additionalSetCount,
+                existing, room.activeParticipantIds(), courtCount, additionalSetCount,
                 room.fixedPairs());
 
         // 既存分の開始時刻もドメインオブジェクトに保持されているため、削除→保存で保たれる。

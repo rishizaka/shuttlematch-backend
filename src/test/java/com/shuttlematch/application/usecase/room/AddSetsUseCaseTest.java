@@ -67,6 +67,28 @@ class AddSetsUseCaseTest {
     }
 
     @Test
+    @DisplayName("早退した参加者は追加セットに含まれない(participantIds ではなく activeParticipantIds を使う)")
+    void excludesLeftParticipantFromAddedSets() {
+        Room room = openSessionWithGuests(6);
+        MatchSchedule base = matchingDomainService.generate(room.id(), room.participantIds(), 1, 3);
+        matchScheduleRepository.save(base);
+
+        var left = room.participants().get(0).id();
+        room.markParticipantLeft(left);
+        roomRepository.save(room);
+
+        MatchSchedule result = useCase.execute(room.id(), 3);
+
+        boolean leftInAddedSets = result.matches().stream()
+                .filter(m -> m.setNumber() > 3)
+                .anyMatch(m -> List.of(
+                                m.pairA().player1(), m.pairA().player2(),
+                                m.pairB().player1(), m.pairB().player2())
+                        .contains(left));
+        assertThat(leftInAddedSets).isFalse();
+    }
+
+    @Test
     @DisplayName("スケジュール未生成なら ResourceNotFoundException")
     void throwsWhenScheduleNotGenerated() {
         Room room = openSessionWithGuests(6);
