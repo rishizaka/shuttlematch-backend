@@ -9,6 +9,18 @@ import java.util.Objects;
  */
 public record Participant(ParticipantId id, UserId userId, String guestName, ParticipantStatus status) {
 
+    /**
+     * 運営者が「番号とユーザーの紐付けを解いた」フリー枠の名前。
+     * フロントの FREE_SLOT(src/lib/guests.ts)と同じ文字列。誰でも名乗ってよい。
+     */
+    public static final String FREE_SLOT = "フリー";
+
+    /**
+     * 運営者が代理追加する遅刻者・ビジターの既定名。
+     * フロントの VISITOR_PLACEHOLDER(src/lib/guests.ts)と同じ文字列。誰でも名乗ってよい。
+     */
+    public static final String VISITOR_PLACEHOLDER = "遅刻者・ビジター";
+
     public Participant {
         Objects.requireNonNull(id, "ParticipantId は null にできません");
         Objects.requireNonNull(status, "status は null にできません");
@@ -54,5 +66,17 @@ public record Participant(ParticipantId id, UserId userId, String guestName, Par
 
     public boolean isActive() {
         return status == ParticipantStatus.ACTIVE;
+    }
+
+    /**
+     * 誰でも名乗ってよい「空き」枠か(番号のまま / フリー / 遅刻者・ビジターの既定名)。
+     * フロントの isClaimableSlot(src/lib/guests.ts)と同じ判定。
+     * {@link com.shuttlematch.domain.repository.RoomRepository#claimNextFreeSlot} が
+     * 自動採番の対象を選ぶのに使う。
+     */
+    public boolean isClaimableSlot() {
+        if (guestName == null) return true;
+        String t = guestName.trim();
+        return t.matches("\\d+") || t.equals(VISITOR_PLACEHOLDER) || t.equals(FREE_SLOT);
     }
 }

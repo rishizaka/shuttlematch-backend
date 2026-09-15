@@ -33,10 +33,12 @@ public interface RoomRepository {
     }
 
     /**
-     * 「番号のまま(まだ誰も名乗っていない)」枠のうち、番号が一番若いものを1つだけ選んで
-     * 名前を付け、その participantId を返す(無ければ空)。同時に複数人が呼んでも、
-     * それぞれ別の番号が割り当てられる(取り合いにならない)。1セット目が始まる前の
-     * 簡易作成ルームで「参加する」を押したときに使う。
+     * 「空き」枠({@link Participant#isClaimableSlot()}: 番号のまま・フリー・
+     * 遅刻者・ビジターのいずれか)のうち、番号が一番若いものを1つだけ選んで名前を付け、
+     * その participantId を返す(無ければ空)。同時に複数人が呼んでも、それぞれ別の
+     * 枠が割り当てられる(取り合いにならない)。1セット目が始まる前の簡易作成ルームで
+     * 「参加する」を押したときに使う。定員ぶん全員が名乗った後でも、早退などでフリーに
+     * なった枠があればそこに詰められる。
      * <p>
      * デフォルト実装は集約経由(単一スレッド前提のテスト用フェイク向け)。JPA 実装は
      * 行ロック({@code FOR UPDATE SKIP LOCKED})で原子的に行う。
@@ -44,8 +46,7 @@ public interface RoomRepository {
     default Optional<ParticipantId> claimNextFreeSlot(RoomId roomId, String name) {
         return findById(roomId).flatMap(room -> {
             Optional<Participant> next = room.participants().stream()
-                    .filter(p -> p.isActive() && p.guestName() != null
-                            && p.guestName().trim().matches("\\d+"))
+                    .filter(p -> p.isActive() && p.isClaimableSlot())
                     .findFirst();
             next.ifPresent(p -> room.renameParticipant(p.id(), name));
             next.ifPresent(p -> save(room));

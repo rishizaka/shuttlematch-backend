@@ -207,8 +207,8 @@ public class RoomRepositoryAdapter implements RoomRepository {
         // lockNextFreeSlot が FOR UPDATE SKIP LOCKED で1行だけ行ロックするので、
         // 同時に複数リクエストが来てもそれぞれ別の行を掴む(取り合いにならない)。
         // ロックは呼び出し元(ユースケース)の @Transactional の中で保持される。
-        Optional<RoomParticipantEntity> locked =
-                participantJpaRepository.lockNextFreeSlot(roomId.value());
+        Optional<RoomParticipantEntity> locked = participantJpaRepository.lockNextFreeSlot(
+                roomId.value(), Participant.FREE_SLOT, Participant.VISITOR_PLACEHOLDER);
         if (locked.isEmpty()) {
             return Optional.empty();
         }

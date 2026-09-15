@@ -94,6 +94,43 @@ class ClaimNextParticipantUseCaseTest {
     }
 
     @Test
+    @DisplayName("定員が満員でも、早退などでフリーになった枠があればそこに詰められる")
+    void claimsFreedSlotWhenFull() {
+        Room room = quickCreatedRoom(3);
+        // 全員が名乗り、定員は満員になる。
+        for (int i = 1; i <= 3; i++) {
+            useCase.execute(room.id(), "person" + i);
+        }
+        // 2番が早退してフリーになった、という状況を再現する。
+        Participant two = room.participants().get(1);
+        room.renameParticipant(two.id(), Participant.FREE_SLOT);
+        roomRepository.save(room);
+
+        ClaimNextParticipantUseCase.Result result = useCase.execute(room.id(), "あとから");
+
+        assertThat(result.claimedId()).isEqualTo(two.id());
+        Participant claimed = result.room().participants().stream()
+                .filter(p -> p.id().equals(result.claimedId()))
+                .findFirst().orElseThrow();
+        assertThat(claimed.guestName()).isEqualTo("あとから");
+    }
+
+    @Test
+    @DisplayName("運営者が代理追加した遅刻者・ビジター枠にも詰められる")
+    void claimsVisitorPlaceholderSlot() {
+        Room room = quickCreatedRoom(2);
+        useCase.execute(room.id(), "person1");
+        useCase.execute(room.id(), "person2");
+        // 運営者が3人目の遅刻者ぶんを代理追加した、という状況を再現する。
+        Participant added = room.addGuest(Participant.VISITOR_PLACEHOLDER);
+        roomRepository.save(room);
+
+        ClaimNextParticipantUseCase.Result result = useCase.execute(room.id(), "ちこく");
+
+        assertThat(result.claimedId()).isEqualTo(added.id());
+    }
+
+    @Test
     @DisplayName("終了したセッションには参加できない")
     void throwsWhenClosed() {
         Room room = quickCreatedRoom(4);
