@@ -41,6 +41,9 @@ public class QuickCreateRoomUseCase {
                 java.time.OffsetDateTime.now(),
                 null, null, command.courtCount(),
                 command.createdBy());
+        // 1セット目が始まる前は「番号を選ぶ」より「参加する」で自動採番する導線を出す
+        // (フロント側の出し分けに使う。ClaimNextParticipantUseCase 参照)。
+        room.markQuickCreated();
 
         // 番号(1..N)の参加者を登録する。名前は後から変更できる。
         for (int i = 1; i <= command.participantCount(); i++) {

@@ -20,7 +20,9 @@ public record RoomResponse(
         String createdBy,
         int participantCount,
         List<ParticipantResponse> participants,
-        List<FixedPairResponse> fixedPairs) {
+        List<FixedPairResponse> fixedPairs,
+        /** 簡易作成(人数を指定してその場で番号参加者+試合表を作る)ルームか。 */
+        boolean quickCreated) {
 
     public static RoomResponse from(Room room) {
         List<ParticipantResponse> participants = room.participants().stream()
@@ -41,6 +43,7 @@ public record RoomResponse(
                 room.createdBy().value().toString(),
                 participants.size(),
                 participants,
-                fixedPairs);
+                fixedPairs,
+                room.quickCreated());
     }
 }

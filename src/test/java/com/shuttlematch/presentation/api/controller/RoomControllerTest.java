@@ -74,6 +74,9 @@ class RoomControllerTest {
     @MockitoBean
     private com.shuttlematch.application.usecase.room.RenameParticipantUseCase renameParticipantUseCase;
 
+    @MockitoBean
+    private com.shuttlematch.application.usecase.room.ClaimNextParticipantUseCase claimNextParticipantUseCase;
+
     private Room sampleSession() {
         return Room.create(
                 "練習会", OffsetDateTime.parse("2026-07-01T18:00:00+09:00"),

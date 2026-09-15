@@ -52,4 +52,8 @@ public class RoomEntity {
     // DB の default now() に任せる
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /** 簡易作成(人数を指定してその場で番号参加者+試合表を作る)ルームか。 */
+    @Column(name = "quick_created", nullable = false)
+    private boolean quickCreated;
 }

@@ -2,11 +2,13 @@ package com.shuttlematch.presentation.api.controller;
 
 import com.shuttlematch.application.usecase.room.AddParticipantCommand;
 import com.shuttlematch.application.usecase.room.AddParticipantUseCase;
+import com.shuttlematch.application.usecase.room.ClaimNextParticipantUseCase;
 import com.shuttlematch.application.usecase.room.JoinRoomUseCase;
 import com.shuttlematch.application.usecase.room.MarkParticipantLeftUseCase;
 import com.shuttlematch.application.usecase.room.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RemoveParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RenameParticipantUseCase;
+import com.shuttlematch.presentation.api.request.ClaimNextParticipantRequest;
 import com.shuttlematch.presentation.api.request.JoinRoomRequest;
 import com.shuttlematch.presentation.api.request.ParticipantIdsRequest;
 import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
@@ -44,6 +46,7 @@ public class ParticipantController {
     private final MarkParticipantLeftUseCase markParticipantLeftUseCase;
     private final ReactivateParticipantUseCase reactivateParticipantUseCase;
     private final RenameParticipantUseCase renameParticipantUseCase;
+    private final ClaimNextParticipantUseCase claimNextParticipantUseCase;
 
     public ParticipantController(
             AddParticipantUseCase addParticipantUseCase,
@@ -51,13 +54,15 @@ public class ParticipantController {
             RemoveParticipantUseCase removeParticipantUseCase,
             MarkParticipantLeftUseCase markParticipantLeftUseCase,
             ReactivateParticipantUseCase reactivateParticipantUseCase,
-            RenameParticipantUseCase renameParticipantUseCase) {
+            RenameParticipantUseCase renameParticipantUseCase,
+            ClaimNextParticipantUseCase claimNextParticipantUseCase) {
         this.addParticipantUseCase = addParticipantUseCase;
         this.joinRoomUseCase = joinRoomUseCase;
         this.removeParticipantUseCase = removeParticipantUseCase;
         this.markParticipantLeftUseCase = markParticipantLeftUseCase;
         this.reactivateParticipantUseCase = reactivateParticipantUseCase;
         this.renameParticipantUseCase = renameParticipantUseCase;
+        this.claimNextParticipantUseCase = claimNextParticipantUseCase;
     }
 
     /** 参加登録(登録ユーザーまたはゲスト)。 */
@@ -93,6 +98,30 @@ public class ParticipantController {
         }
         return new JoinResponse(
                 result.joinedId().value().toString(), number, RoomResponse.from(result.room()));
+    }
+
+    /**
+     * 簡易作成ルームの「番号のまま」の枠に、一番若い空き番号で自動参加する(名前は任意)。
+     * 同時に複数人が押しても、DB の行ロックで別々の番号が割り当てられる
+     * ({@link ClaimNextParticipantUseCase} 参照)。
+     */
+    @PostMapping("/claim-next")
+    @ResponseStatus(HttpStatus.CREATED)
+    public JoinResponse claimNext(
+            @PathVariable UUID roomId,
+            @Valid @RequestBody ClaimNextParticipantRequest request) {
+        ClaimNextParticipantUseCase.Result result =
+                claimNextParticipantUseCase.execute(RoomId.of(roomId), request.name());
+        List<Participant> participants = result.room().participants();
+        int number = 0;
+        for (int i = 0; i < participants.size(); i++) {
+            if (participants.get(i).id().equals(result.claimedId())) {
+                number = i + 1;
+                break;
+            }
+        }
+        return new JoinResponse(
+                result.claimedId().value().toString(), number, RoomResponse.from(result.room()));
     }
 
     /** 参加キャンセル(生成前)。 */

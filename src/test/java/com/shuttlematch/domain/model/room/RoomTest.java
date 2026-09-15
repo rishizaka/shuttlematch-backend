@@ -27,6 +27,17 @@ class RoomTest {
     }
 
     @Test
+    @DisplayName("作成直後は簡易作成フラグが立っていない。markQuickCreated で立てられる")
+    void quickCreatedFlagDefaultsFalse() {
+        Room room = newSession(null);
+        assertThat(room.quickCreated()).isFalse();
+
+        room.markQuickCreated();
+
+        assertThat(room.quickCreated()).isTrue();
+    }
+
+    @Test
     @DisplayName("タイトル未入力は作成できない")
     void cannotCreateWithoutTitle() {
         assertThatThrownBy(() -> Room.create(

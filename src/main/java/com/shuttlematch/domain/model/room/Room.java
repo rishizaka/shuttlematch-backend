@@ -32,6 +32,16 @@ public class Room {
     private final List<Participant> participants;
     /** 常に同じチームで組む固定ペア(大会前などに運営が設定する)。 */
     private final List<Pair> fixedPairs;
+    /**
+     * 簡易作成(人数を指定してその場で番号参加者+試合表を作る)ルームか。
+     * <p>
+     * {@code create} では常に false で始まり、かんたん作成のユースケースだけが
+     * {@link #markQuickCreated()} で立てる。永続化からの復元は
+     * {@link com.shuttlematch.infrastructure.persistence.jpa.RoomRepositoryAdapter} が
+     * DB の値に応じて同じメソッドで復元する(コンストラクタ引数に足すと reconstitute の
+     * 呼び出し元が多く、影響範囲が無駄に広がるため、生成後にセットする形にしてある)。
+     */
+    private boolean quickCreated;
 
     private Room(
             RoomId id, String shareCode, String title, OffsetDateTime heldAt,
@@ -165,6 +175,19 @@ public class Room {
             }
         }
         return false;
+    }
+
+    /**
+     * 簡易作成ルームであることを記録する。かんたん作成のユースケースが生成直後に呼ぶほか、
+     * 永続化層が DB から復元するときにも(値が true なら)呼ぶ。
+     */
+    public void markQuickCreated() {
+        this.quickCreated = true;
+    }
+
+    /** 簡易作成(人数を指定してその場で番号参加者+試合表を作る)ルームか。 */
+    public boolean quickCreated() {
+        return quickCreated;
     }
 
     /** 試合生成済みに遷移する。 */

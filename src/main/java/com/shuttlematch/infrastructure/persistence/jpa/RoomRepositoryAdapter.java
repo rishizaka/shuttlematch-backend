@@ -57,6 +57,7 @@ public class RoomRepositoryAdapter implements RoomRepository {
         entity.setCourtCount(room.courtCount());
         entity.setStatus(room.status().name());
         entity.setCreatedBy(room.createdBy().value());
+        entity.setQuickCreated(room.quickCreated());
         roomJpaRepository.save(entity);
 
         reconcileParticipants(room);
@@ -202,6 +203,22 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     @Override
+    public Optional<ParticipantId> claimNextFreeSlot(RoomId roomId, String name) {
+        // lockNextFreeSlot が FOR UPDATE SKIP LOCKED で1行だけ行ロックするので、
+        // 同時に複数リクエストが来てもそれぞれ別の行を掴む(取り合いにならない)。
+        // ロックは呼び出し元(ユースケース)の @Transactional の中で保持される。
+        Optional<RoomParticipantEntity> locked =
+                participantJpaRepository.lockNextFreeSlot(roomId.value());
+        if (locked.isEmpty()) {
+            return Optional.empty();
+        }
+        RoomParticipantEntity entity = locked.get();
+        entity.setGuestName(name);
+        participantJpaRepository.save(entity);
+        return Optional.of(ParticipantId.of(entity.getId()));
+    }
+
+    @Override
     public void deleteById(RoomId roomId) {
         // rooms 行を削除すると room_participants / room_fixed_pairs / match_schedules(→matches)
         // は DB の ON DELETE CASCADE で一緒に削除される。
@@ -235,7 +252,7 @@ public class RoomRepositoryAdapter implements RoomRepository {
                         ParticipantId.of(e.getParticipantA()),
                         ParticipantId.of(e.getParticipantB())))
                 .toList();
-        return Room.reconstitute(
+        Room room = Room.reconstitute(
                 RoomId.of(entity.getId()),
                 entity.getShareCode(),
                 entity.getTitle(),
@@ -247,6 +264,12 @@ public class RoomRepositoryAdapter implements RoomRepository {
                 UserId.of(entity.getCreatedBy()),
                 participants,
                 fixedPairs);
+        // quickCreated は reconstitute の引数に足すと呼び出し元(テスト含む)が多く影響範囲が
+        // 広がるため、生成後にこちらでセットする(Room#quickCreated の javadoc参照)。
+        if (entity.isQuickCreated()) {
+            room.markQuickCreated();
+        }
+        return room;
     }
 
     private Participant toParticipant(RoomParticipantEntity entity) {

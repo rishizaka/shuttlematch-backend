@@ -51,6 +51,8 @@ class QuickCreateSessionUseCaseTest {
         assertThat(room.participants().stream().map(p -> p.guestName()).toList())
                 .containsExactly("1", "2", "3", "4", "5", "6");
         assertThat(matchScheduleRepository.findByRoomId(room.id())).isPresent();
+        // 1セット目が始まる前は「参加する」の自動採番導線をフロントに出す判定に使う。
+        assertThat(room.quickCreated()).isTrue();
     }
 
     @Test
