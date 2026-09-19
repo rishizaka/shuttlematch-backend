@@ -70,16 +70,18 @@ class ClaimNextParticipantUseCaseTest {
     }
 
     @Test
-    @DisplayName("名前を入れなければ「ゲスト」になる")
-    void defaultsToGuestWhenNameBlank() {
+    @DisplayName("名前が空(空白のみ含む)なら例外で、誰も割り当たらない")
+    void rejectsBlankName() {
         Room room = quickCreatedRoom(4);
 
-        ClaimNextParticipantUseCase.Result result = useCase.execute(room.id(), "  ");
-
-        Participant claimed = result.room().participants().stream()
-                .filter(p -> p.id().equals(result.claimedId()))
-                .findFirst().orElseThrow();
-        assertThat(claimed.guestName()).isEqualTo("ゲスト");
+        assertThatThrownBy(() -> useCase.execute(room.id(), "  "))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> useCase.execute(room.id(), null))
+                .isInstanceOf(IllegalArgumentException.class);
+        // 誰も名乗っていない(全員まだ番号のまま)。
+        Room reloaded = roomRepository.findById(room.id()).orElseThrow();
+        assertThat(reloaded.participants()).allSatisfy(
+                p -> assertThat(p.guestName()).matches("\\d+"));
     }
 
     @Test

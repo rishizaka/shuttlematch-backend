@@ -21,6 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 番号の割り当ては {@link RoomRepository#claimNextFreeSlot} が DB の行ロック
  * (FOR UPDATE SKIP LOCKED)で原子的に行うため、同時に複数人が押しても取り合いにならず、
  * それぞれ別の番号が割り振られる。
+ * <p>
+ * 名前は必須({@link JoinRoomUseCase} と同じ)。以前は空欄なら「ゲスト」を既定名にして
+ * いたが、実際に空欄のまま参加する人が出ると、「番号のまま(誰も参加していない)」枠と
+ * guestName="ゲスト" の実在の参加者が運営者から見分けづらくなる混乱が起きたため、
+ * 必須に変更した。
  */
 @Service
 public class ClaimNextParticipantUseCase {
@@ -33,6 +38,9 @@ public class ClaimNextParticipantUseCase {
 
     @Transactional
     public Result execute(RoomId roomId, String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("名前を入力してください");
+        }
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "セッションが見つかりません: " + roomId.value()));
@@ -40,8 +48,7 @@ public class ClaimNextParticipantUseCase {
             throw new IllegalStateException("終了したセッションには参加できません");
         }
 
-        String trimmed = (name == null || name.isBlank()) ? "ゲスト" : name.trim();
-        ParticipantId claimedId = roomRepository.claimNextFreeSlot(roomId, trimmed)
+        ParticipantId claimedId = roomRepository.claimNextFreeSlot(roomId, name.trim())
                 .orElseThrow(() -> new IllegalStateException("参加できる空き番号がありません"));
 
         Room saved = roomRepository.findById(roomId).orElseThrow();
