@@ -4,16 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.ParticipantStatus;
 import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
+import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.RoomRepository;
+import com.shuttlematch.domain.service.MatchingDomainService;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,7 +33,10 @@ class ParticipantAvailabilityUseCaseTest {
     @BeforeEach
     void setUp() {
         roomRepository = new FakeSessionRepository();
-        markLeft = new MarkParticipantLeftUseCase(roomRepository);
+        FakeMatchScheduleRepository matchScheduleRepository = new FakeMatchScheduleRepository();
+        ReplanFutureSetsUseCase replan = new ReplanFutureSetsUseCase(
+                roomRepository, matchScheduleRepository, new MatchingDomainService(new Random(1L)));
+        markLeft = new MarkParticipantLeftUseCase(roomRepository, matchScheduleRepository, replan);
         reactivate = new ReactivateParticipantUseCase(roomRepository);
         rename = new RenameParticipantUseCase(roomRepository);
     }
@@ -141,6 +148,29 @@ class ParticipantAvailabilityUseCaseTest {
                     .filter(r -> heldFrom == null || !r.heldAt().isBefore(heldFrom))
                     .filter(r -> heldTo == null || r.heldAt().isBefore(heldTo))
                     .toList();
+        }
+    }
+
+    /** このテストでは試合表を生成しないので、常に空を返すだけの最小実装。 */
+    private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {
+        @Override
+        public MatchSchedule save(MatchSchedule schedule) {
+            return schedule;
+        }
+
+        @Override
+        public Optional<MatchSchedule> findByRoomId(RoomId roomId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void deleteByRoomId(RoomId roomId) {
+        }
+
+        @Override
+        public Optional<MatchSchedule> startSet(
+                RoomId roomId, int setNumber, OffsetDateTime startedAt) {
+            return Optional.empty();
         }
     }
 }

@@ -4,16 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.ParticipantStatus;
 import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
+import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.RoomRepository;
+import com.shuttlematch.domain.service.MatchingDomainService;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,16 +27,23 @@ import org.junit.jupiter.api.Test;
 /**
  * executeMany() は「1回の読み込み・1回の保存」であることが要点(クラス javadoc の
  * lost update 対策)。ここでは save() の呼び出し回数と、失敗時に何も保存されないことを固定する。
+ * また、試合表が生成済みなら早退と同時に未開始セットが自動で再編成されることも固定する
+ * (2026-09-15・2026-09-19 に「早退にしたのに、セット追加すると未開始セットに残ったまま
+ * だった」不具合が本番で起きたため)。
  */
 class MarkParticipantLeftUseCaseTest {
 
     private FakeRoomRepository roomRepository;
+    private FakeMatchScheduleRepository matchScheduleRepository;
     private MarkParticipantLeftUseCase useCase;
 
     @BeforeEach
     void setUp() {
         roomRepository = new FakeRoomRepository();
-        useCase = new MarkParticipantLeftUseCase(roomRepository);
+        matchScheduleRepository = new FakeMatchScheduleRepository();
+        ReplanFutureSetsUseCase replan = new ReplanFutureSetsUseCase(
+                roomRepository, matchScheduleRepository, new MatchingDomainService(new Random(1L)));
+        useCase = new MarkParticipantLeftUseCase(roomRepository, matchScheduleRepository, replan);
     }
 
     private Room roomWithGuests(int count) {
@@ -42,6 +54,15 @@ class MarkParticipantLeftUseCaseTest {
         }
         roomRepository.save(room);
         return room;
+    }
+
+    private List<ParticipantId> participantIdsInMatches(MatchSchedule schedule) {
+        return schedule.matches().stream()
+                .flatMap(m -> java.util.stream.Stream.of(
+                        m.pairA().player1(), m.pairA().player2(),
+                        m.pairB().player1(), m.pairB().player2()))
+                .distinct()
+                .toList();
     }
 
     @Test
@@ -60,6 +81,52 @@ class MarkParticipantLeftUseCaseTest {
         assertThat(result.participants().get(1).status()).isEqualTo(ParticipantStatus.ACTIVE);
         assertThat(result.participants().get(3).status()).isEqualTo(ParticipantStatus.ACTIVE);
         assertThat(roomRepository.saveCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("execute: 試合表が生成済みなら、早退にすると同時に未開始セットが自動で再編成される")
+    void autoReplansScheduleOnSingleLeave() {
+        Room room = roomWithGuests(4);
+        MatchSchedule schedule = new MatchingDomainService(new Random(2L))
+                .generate(room.id(), room.participants().stream().map(p -> p.id()).toList(), 1, 5);
+        matchScheduleRepository.save(schedule);
+        ParticipantId leaving = room.participants().get(0).id();
+
+        useCase.execute(room.id(), leaving);
+
+        MatchSchedule after = matchScheduleRepository.findByRoomId(room.id()).orElseThrow();
+        // 早退にした人は、まだ始まっていない(=そもそも1つも開始していない)セットの
+        // どこにも含まれない。手動で「再編成」を別途呼んでいないのに、ここまで反映される
+        // ことが今回のポイント。
+        assertThat(participantIdsInMatches(after)).doesNotContain(leaving);
+    }
+
+    @Test
+    @DisplayName("executeMany: 試合表が生成済みなら、まとめて早退にしたときも未開始セットが自動で再編成される")
+    void autoReplansScheduleOnBulkLeave() {
+        Room room = roomWithGuests(5);
+        MatchSchedule schedule = new MatchingDomainService(new Random(3L))
+                .generate(room.id(), room.participants().stream().map(p -> p.id()).toList(), 1, 5);
+        matchScheduleRepository.save(schedule);
+        List<ParticipantId> leaving =
+                List.of(room.participants().get(0).id(), room.participants().get(1).id());
+
+        useCase.executeMany(room.id(), leaving);
+
+        MatchSchedule after = matchScheduleRepository.findByRoomId(room.id()).orElseThrow();
+        assertThat(participantIdsInMatches(after)).doesNotContainAnyElementsOf(leaving);
+    }
+
+    @Test
+    @DisplayName("execute: 試合表がまだ無いルームでは、再編成をせずに早退だけ反映する")
+    void skipsReplanWhenScheduleNotGeneratedYet() {
+        Room room = roomWithGuests(4);
+        ParticipantId leaving = room.participants().get(0).id();
+
+        Room result = useCase.execute(room.id(), leaving);
+
+        assertThat(result.participants().get(0).status()).isEqualTo(ParticipantStatus.LEFT);
+        assertThat(matchScheduleRepository.findByRoomId(room.id())).isEmpty();
     }
 
     @Test
@@ -153,6 +220,34 @@ class MarkParticipantLeftUseCaseTest {
         @Override
         public List<Room> search(RoomStatus status, OffsetDateTime heldFrom, OffsetDateTime heldTo) {
             return List.copyOf(store.values());
+        }
+    }
+
+    private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {
+        private final List<MatchSchedule> store = new ArrayList<>();
+
+        @Override
+        public MatchSchedule save(MatchSchedule schedule) {
+            store.add(schedule);
+            return schedule;
+        }
+
+        @Override
+        public Optional<MatchSchedule> findByRoomId(RoomId roomId) {
+            return store.stream()
+                    .filter(s -> s.roomId().equals(roomId))
+                    .reduce((first, second) -> second);
+        }
+
+        @Override
+        public void deleteByRoomId(RoomId roomId) {
+            store.removeIf(s -> s.roomId().equals(roomId));
+        }
+
+        @Override
+        public Optional<MatchSchedule> startSet(
+                RoomId roomId, int setNumber, OffsetDateTime startedAt) {
+            return findByRoomId(roomId);
         }
     }
 }
