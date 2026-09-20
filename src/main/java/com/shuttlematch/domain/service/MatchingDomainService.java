@@ -49,7 +49,7 @@ public class MatchingDomainService {
     /** ダブルス1試合の人数。 */
     private static final int PLAYERS_PER_MATCH = 4;
     /** デフォルトのセット数。 */
-    public static final int DEFAULT_SET_COUNT = 10;
+    public static final int DEFAULT_SET_COUNT = 20;
 
     private final RandomGenerator random;
 

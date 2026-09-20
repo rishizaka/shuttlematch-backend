@@ -56,8 +56,8 @@ class GenerateMatchesUseCaseTest {
 
         MatchSchedule result = useCase.execute(new GenerateMatchesCommand(room.id()));
 
-        // 1コート(デフォルト) × デフォルト10セット = 10試合
-        assertThat(result.size()).isEqualTo(10);
+        // 1コート(デフォルト) × デフォルトセット数 = そのままの試合数
+        assertThat(result.size()).isEqualTo(MatchingDomainService.DEFAULT_SET_COUNT);
         assertThat(matchScheduleRepository.findByRoomId(room.id())).contains(result);
         assertThat(roomRepository.findById(room.id()).orElseThrow().status())
                 .isEqualTo(RoomStatus.GENERATED);
@@ -93,7 +93,7 @@ class GenerateMatchesUseCaseTest {
 
         MatchSchedule result = useCase.execute(new GenerateMatchesCommand(room.id()));
 
-        assertThat(result.size()).isEqualTo(10);
+        assertThat(result.size()).isEqualTo(MatchingDomainService.DEFAULT_SET_COUNT);
         // 補充後の参加者は4人になっている
         Room saved = roomRepository.findById(room.id()).orElseThrow();
         assertThat(saved.activeParticipantIds()).hasSize(4);

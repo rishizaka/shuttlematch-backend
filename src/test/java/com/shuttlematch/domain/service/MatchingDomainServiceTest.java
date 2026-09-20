@@ -162,11 +162,11 @@ class MatchingDomainServiceTest {
     }
 
     @Test
-    @DisplayName("デフォルト(10)セットでは1コートあたり10試合を生成する")
+    @DisplayName("デフォルトセット数では1コートあたりその数ぶんの試合を生成する")
     void generatesDefaultSetCount() {
         MatchSchedule schedule = serviceWithSeed(2L)
                 .generate(roomId, participants(8), 1, MatchingDomainService.DEFAULT_SET_COUNT);
-        assertEquals(10, schedule.size());
+        assertEquals(MatchingDomainService.DEFAULT_SET_COUNT, schedule.size());
     }
 
     @Test
