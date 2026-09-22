@@ -90,8 +90,8 @@ class RoomTest {
     }
 
     @Test
-    @DisplayName("生成済みでも参加者を追加できる(途中参加)が、削除はできない(早退を使う)")
-    void allowsAddButNotRemoveAfterGenerated() {
+    @DisplayName("生成済みでも参加者を追加できる(途中参加)。早退マークは履歴を残したまま件数を変えない")
+    void allowsAddAndLeaveAfterGenerated() {
         Room room = newSession(null);
         Participant existing = room.addGuest("ゲスト");
         room.markGenerated();
@@ -100,13 +100,26 @@ class RoomTest {
         // 途中参加は可能
         Participant late = room.addGuest("遅参");
         assertThat(room.participants()).hasSize(2);
-        // 生成後の削除は不可
-        assertThatThrownBy(() -> room.removeParticipant(late.id()))
-                .isInstanceOf(IllegalStateException.class);
         // 早退マークは可能。履歴は残る(件数は変わらない)。
         assertThat(room.markParticipantLeft(existing.id())).isTrue();
         assertThat(room.participants()).hasSize(2);
         assertThat(room.activeParticipantIds()).containsExactly(late.id());
+    }
+
+    @Test
+    @DisplayName("removeParticipant は行を削除する。終了済みでなければステータスを問わない")
+    void removeParticipantWorksRegardlessOfStatusUnlessClosed() {
+        // removeParticipant() 自体は「末尾のみ」「未開始のみ」を知らない低レベルの操作。
+        // その安全性は RemoveParticipantUseCase の責務(RemoveParticipantUseCaseTest参照)。
+        Room room = newSession(null);
+        Participant guest = room.addGuest("ゲスト");
+        room.markGenerated();
+
+        assertThat(room.removeParticipant(guest.id())).isTrue();
+        assertThat(room.participants()).isEmpty();
+
+        // 存在しない参加者は false。
+        assertThat(room.removeParticipant(ParticipantId.newId())).isFalse();
     }
 
     @Test

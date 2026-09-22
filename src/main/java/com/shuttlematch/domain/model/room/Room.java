@@ -129,9 +129,18 @@ public class Room {
         return participant;
     }
 
-    /** 参加者を削除する。存在しなければ false。生成前のみ可(生成後は早退を使う)。 */
+    /**
+     * 参加者を行ごと削除する(試合数のカウントからも消える)。存在しなければ false。
+     * <p>
+     * 終了済みでなければ呼べる。ただしこれは低レベルの操作で、それ以外の安全性
+     * (試合開始後は末尾以外・末尾でも削除しない等)は呼び出し元
+     * ({@link com.shuttlematch.application.usecase.room.RemoveParticipantUseCase}) の責務。
+     * 特に、試合表が既に生成されている場合、この参加者を参照する試合データが
+     * DB に残ったまま行を削除すると外部キー制約に反するため、呼び出し元は
+     * 「この参加者が試合データからいなくなったことを保存してから」この行削除を呼ぶこと。
+     */
     public boolean removeParticipant(ParticipantId participantId) {
-        ensureCanModifyParticipants();
+        ensureNotClosed();
         boolean removed = participants.removeIf(p -> p.id().equals(participantId));
         if (removed) {
             // 削除された参加者を含む固定ペアも解除する(相方だけ残さない)。
@@ -204,12 +213,6 @@ public class Room {
             throw new IllegalStateException("このセッションは既に終了しています");
         }
         this.status = RoomStatus.CLOSED;
-    }
-
-    private void ensureCanModifyParticipants() {
-        if (!status.allowsParticipantChanges()) {
-            throw new IllegalStateException("このセッションは参加者を変更できる状態ではありません: " + status);
-        }
     }
 
     /** 参加者の追加は終了済み以外なら可能(生成後の途中参加を許可)。 */

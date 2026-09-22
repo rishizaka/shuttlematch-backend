@@ -4,17 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.shuttlematch.application.ResourceNotFoundException;
+import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.domain.model.room.Participant;
 import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
+import com.shuttlematch.domain.repository.MatchScheduleRepository;
 import com.shuttlematch.domain.repository.RoomRepository;
+import com.shuttlematch.domain.service.MatchingDomainService;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,7 +39,14 @@ class RoomUseCaseTest {
         roomRepository = new FakeSessionRepository();
         createSessionUseCase = new CreateRoomUseCase(roomRepository);
         addParticipantUseCase = new AddParticipantUseCase(roomRepository);
-        removeParticipantUseCase = new RemoveParticipantUseCase(roomRepository);
+        // このテストの2件は生成前(PREPARING/OPEN)の削除しか使わないため、
+        // 試合表まわりのfakeは呼ばれない(空実装で十分)。生成後の削除の挙動は
+        // RemoveParticipantUseCaseTest 側で確認している。
+        FakeMatchScheduleRepository matchScheduleRepository = new FakeMatchScheduleRepository();
+        ReplanFutureSetsUseCase replan = new ReplanFutureSetsUseCase(
+                roomRepository, matchScheduleRepository, new MatchingDomainService(new Random(1L)));
+        removeParticipantUseCase =
+                new RemoveParticipantUseCase(roomRepository, matchScheduleRepository, replan);
         getRoomUseCase = new GetRoomUseCase(roomRepository);
         joinRoomUseCase = new JoinRoomUseCase(roomRepository);
     }
@@ -197,6 +209,35 @@ class RoomUseCaseTest {
                     .filter(r -> heldFrom == null || !r.heldAt().isBefore(heldFrom))
                     .filter(r -> heldTo == null || r.heldAt().isBefore(heldTo))
                     .toList();
+        }
+    }
+
+    /** このテストでは試合表を生成しないので、呼ばれない前提の最小実装。 */
+    private static final class FakeMatchScheduleRepository implements MatchScheduleRepository {
+        private final List<MatchSchedule> store = new ArrayList<>();
+
+        @Override
+        public MatchSchedule save(MatchSchedule schedule) {
+            store.add(schedule);
+            return schedule;
+        }
+
+        @Override
+        public Optional<MatchSchedule> findByRoomId(RoomId roomId) {
+            return store.stream()
+                    .filter(s -> s.roomId().equals(roomId))
+                    .reduce((first, second) -> second);
+        }
+
+        @Override
+        public void deleteByRoomId(RoomId roomId) {
+            store.removeIf(s -> s.roomId().equals(roomId));
+        }
+
+        @Override
+        public Optional<MatchSchedule> startSet(
+                RoomId roomId, int setNumber, OffsetDateTime startedAt) {
+            return findByRoomId(roomId);
         }
     }
 }
