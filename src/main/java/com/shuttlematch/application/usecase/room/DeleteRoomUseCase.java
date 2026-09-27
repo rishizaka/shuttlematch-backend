@@ -44,7 +44,7 @@ public class DeleteRoomUseCase {
     public void execute(RoomId roomId, String shareCode) {
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "ルームが見つかりません: " + roomId.value()));
+                        "ランダム表が見つかりません: " + roomId.value()));
         if (shareCode == null || !room.shareCode().equals(shareCode)) {
             throw new ForbiddenOperationException("共有コードが一致しないため削除できません");
         }

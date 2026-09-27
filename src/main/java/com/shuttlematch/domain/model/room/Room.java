@@ -243,7 +243,7 @@ public class Room {
             throw new IllegalArgumentException("固定ペアは異なる2名で構成してください");
         }
         if (!isParticipant(a) || !isParticipant(b)) {
-            throw new IllegalArgumentException("固定ペアはこのルームの参加者で構成してください");
+            throw new IllegalArgumentException("固定ペアはこのランダム表の参加者で構成してください");
         }
         for (Pair existing : fixedPairs) {
             if (existing.contains(a) || existing.contains(b)) {

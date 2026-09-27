@@ -23,7 +23,7 @@ final class RoomCreationLimit {
         int createdToday = roomRepository.countCreatedSince(createdBy, startOfToday);
         if (createdToday >= Room.MAX_ROOMS_PER_USER_PER_DAY) {
             throw new IllegalStateException(
-                    "1日に作成できるルームは " + Room.MAX_ROOMS_PER_USER_PER_DAY + " 件までです");
+                    "1日に作成できるランダム表は " + Room.MAX_ROOMS_PER_USER_PER_DAY + " 件までです");
         }
     }
 }
