@@ -221,6 +221,38 @@ class MatchingDomainServiceTest {
     }
 
     @Test
+    @DisplayName("12人2コートでも、毎回同じ人と一緒に休む固定化が起きない(連続休みなし・連続出場も従来どおり)")
+    void restCompanionsVaryWithTwelveOnTwoCourts() {
+        // 毎セット4人休み。出場の優先順だけで休みを決めると、同じセットで休んだ人同士は
+        // 出場回数・連続出場が同じまま進むため、次の一巡でもまた一緒に休む。
+        // 対策前は20セットで「同じ2人が一緒に休んだ回数」の最大が平均6.2回(休憩の大半)だった。
+        List<ParticipantId> pool = participants(12);
+        int trials = 30;
+        double avgMaxRestTogether = 0;
+        for (int t = 0; t < trials; t++) {
+            MatchSchedule sch = serviceWithSeed(t).generate(roomId, pool, 2, 20);
+            List<Set<ParticipantId>> resting = restingPerSet(sch, pool);
+            Map<Set<ParticipantId>, Integer> together = new HashMap<>();
+            int max = 0;
+            for (Set<ParticipantId> rest : resting) {
+                List<ParticipantId> l = new ArrayList<>(rest);
+                for (int i = 0; i < l.size(); i++) {
+                    for (int j = i + 1; j < l.size(); j++) {
+                        max = Math.max(max, together.merge(Set.of(l.get(i), l.get(j)), 1, Integer::sum));
+                    }
+                }
+            }
+            avgMaxRestTogether += max;
+            assertEquals(0, countConsecutiveRests(resting), "seed=" + t + " で連続休みが発生");
+            assertTrue(maxConsecutivePlays(sch, pool) <= 3,
+                    "seed=" + t + " で連続出場が従来(3)より長い: " + maxConsecutivePlays(sch, pool));
+        }
+        avgMaxRestTogether /= trials;
+        assertTrue(avgMaxRestTogether <= 5.0,
+                "同じ2人が一緒に休む回数が多い(最大の平均 " + avgMaxRestTogether + ")");
+    }
+
+    @Test
     @DisplayName("出場回数が公平に分散される(最大と最小の差は1以内)")
     void distributesPlayCountsFairly() {
         List<ParticipantId> pool = participants(7);
