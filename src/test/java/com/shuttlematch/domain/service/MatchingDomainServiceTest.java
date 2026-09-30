@@ -253,6 +253,31 @@ class MatchingDomainServiceTest {
     }
 
     @Test
+    @DisplayName("前回休んだときとまったく同じ顔ぶれでまた休むことがない(6人1コート・12人2コート)")
+    void restGroupIsNotExactlyRepeated() {
+        // 6人1コートは一巡(3セット)の最後の休みが公平性から1通りに決まるため、1つ前のセットで
+        // 手を打たないと「さっきと同じ2人がまた一緒に休む」になる(対策前は全ての表で発生、休みの16%)。
+        for (int[] cfg : new int[][] {{6, 1}, {12, 2}}) {
+            List<ParticipantId> pool = participants(cfg[0]);
+            for (long seed = 0; seed < 30; seed++) {
+                MatchSchedule sch = serviceWithSeed(seed).generate(roomId, pool, cfg[1], 20);
+                List<Set<ParticipantId>> resting = restingPerSet(sch, pool);
+                Map<ParticipantId, Set<ParticipantId>> previous = new HashMap<>();
+                for (int set = 0; set < resting.size(); set++) {
+                    Set<ParticipantId> rest = resting.get(set);
+                    for (ParticipantId p : rest) {
+                        assertTrue(!rest.equals(previous.get(p)),
+                                cfg[0] + "人" + cfg[1] + "コート seed=" + seed + " の第" + (set + 1)
+                                        + "セットで、前回と同じ顔ぶれで休んでいる");
+                        previous.put(p, rest);
+                    }
+                }
+                assertEquals(0, countConsecutiveRests(resting), "seed=" + seed + " で連続休みが発生");
+            }
+        }
+    }
+
+    @Test
     @DisplayName("出場回数が公平に分散される(最大と最小の差は1以内)")
     void distributesPlayCountsFairly() {
         List<ParticipantId> pool = participants(7);

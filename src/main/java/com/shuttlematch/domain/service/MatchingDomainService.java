@@ -9,6 +9,7 @@ import com.shuttlematch.domain.model.room.RoomId;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
@@ -34,7 +35,8 @@ import java.util.random.RandomGenerator;
  *       いる人を優先して休ませる)。身体ケアのため、公平性を保ったまま長い連続出場を避ける。
  *       直前に休んだ人は連続0で優先出場になるので、同一人物が連続で休みにもならない。</li>
  *   <li>「毎回同じ人と一緒に休む」固定化を避ける: 一緒に休んだ履歴を蓄積し、公平性・連続休みなし・
- *       連続出場の上限・同コートの偏りを悪化させない範囲で休みの顔ぶれを入れ替える。</li>
+ *       連続出場の上限を崩さない範囲で休みの顔ぶれを入れ替える。特に「前回休んだときとまったく
+ *       同じ顔ぶれでまた休む」は先読みして避ける(連続出場の上限とぶつかる構成では上限を優先)。</li>
  *   <li>それでも同順位ならタイブレーク・ペア分けを Fisher-Yates シャッフルでランダム化する。</li>
  *   <li>「同じ顔ぶれで同じコートに入る」重複を避ける: 同コート共起の履歴(敵味方の区別なし)を
  *       蓄積し、公平性を保った選抜候補とコート割りを共起の少ない組み合わせへ最適化する。
@@ -430,6 +432,11 @@ public class MatchingDomainService {
         // 「一緒に休んだ」回数の履歴。確定済みセットの休みグループからも引き継ぐ。
         Map<ParticipantId, Map<ParticipantId, Integer>> restCoCount = new HashMap<>();
         for (Set<ParticipantId> rest : seedRecentRest) recordRestGroup(restCoCount, rest);
+        // 各人が前回休んだときの顔ぶれ。「前回とまったく同じ顔ぶれでまた休む」を避けるのに使う。
+        Map<ParticipantId, Set<ParticipantId>> lastRestGroup = new HashMap<>();
+        for (Set<ParticipantId> rest : seedRecentRest) {
+            for (ParticipantId p : rest) lastRestGroup.put(p, rest);
+        }
         // 休憩の入れ替えで連続出場を長くしないための上限。従来の輪番でも
         // 「人数 ÷ 毎セットの休み人数」(切り捨て)セットまでは連続出場が起きていたので、
         // それと、入れ替えなしで最後まで回したときの最長連続出場の大きい方を超えないようにする。
@@ -462,11 +469,13 @@ public class MatchingDomainService {
                     }
                     selectedUnits = diversifyRest(
                             units, selectedUnits, playCount, lastPlayedSet, consecutivePlays,
-                            setNumber, setCount - i, required, streakCap, restCoCount, coCount);
+                            setNumber, setCount - i, required, streakCap, restCoCount,
+                            lastRestGroup, coCount);
                     Set<ParticipantId> rest = restMembers(units, selectedUnits);
                     recentRest.addLast(rest);
                     while (recentRest.size() > restWindow) recentRest.removeFirst();
                     recordRestGroup(restCoCount, rest);
+                    for (ParticipantId p : rest) lastRestGroup.put(p, rest);
                 }
             }
 
@@ -915,23 +924,28 @@ public class MatchingDomainService {
     }
 
     /**
-     * 「毎回同じ人と一緒に休む」固定化を崩す。
+     * 休みの顔ぶれの偏りを崩す。
      * <p>
      * 出場の優先順(出場回数→連続出場数)だけで休みを決めると、同じセットで休んだ人同士は
      * 以後ずっと出場回数・連続出場数が同じ値のまま進むため、次の一巡でもまた一緒に休みに
      * 選ばれる(12人2コートでは20セット中6回同じ2人が一緒に休んでいた)。
-     * そこで、休み予定 r と出場予定 s の入れ替えを「一緒に休んだ回数」の重み
-     * ({@link #restGroupCost})が下がる限り繰り返す(山登り)。既存のルールは崩さない:
+     * そこで休み予定 r と出場予定 s を入れ替え、次の順に良くなる限り繰り返す(山登り)。
+     * <ol>
+     *   <li>「前回休んだときとまったく同じ顔ぶれでまた休む」人数。このセットだけでなく、
+     *       残りを従来の輪番で回したときの先 {@code 一巡} セット分も数える。出場回数の公平性から
+     *       あるセットの休みが1通りに決まってしまうことがあり(6人1コートの一巡の最後など)、
+     *       その重複は1つ前のセットで手を打たないと避けられないため。</li>
+     *   <li>「一緒に休んだ回数」の重み({@link #restGroupCost})。</li>
+     * </ol>
+     * 既存のルールは崩さない:
      * <ul>
      *   <li>公平性: r と s は同じ人数・同じ出場回数のときだけ入れ替える。</li>
      *   <li>連続休みなし: 新たに休む s は直前セットに出場している人だけ。</li>
      *   <li>長い連続出場なし: 入れ替えた状態から残りを従来の輪番で回したときの最長連続出場
-     *       ({@link #simulateMaxStreak})が {@code streakCap} を超える入れ替えはしない。
-     *       休みを1セット早めた人は出場回数を取り戻す間に連続出場が伸びるため、
-     *       このセットだけでなく先まで見て判定する。</li>
+     *       ({@link #simulate})が {@code streakCap} を超える入れ替えはしない。</li>
+     *   <li>同じコートの顔ぶれの偏り(出場者の共起コスト)は、休みの完全一致を減らす入れ替え
+     *       以外では増やさない。</li>
      * </ul>
-     * 同じコートの顔ぶれの偏り(出場者の共起コスト)が増える入れ替えはしない。
-     * 同じ改善幅なら、その共起コストが小さい方を選ぶ。
      */
     private List<List<ParticipantId>> diversifyRest(
             List<List<ParticipantId>> units, List<List<ParticipantId>> selectedUnits,
@@ -939,17 +953,21 @@ public class MatchingDomainService {
             Map<ParticipantId, Integer> consecutivePlays, int setNumber, int remainingSets,
             int required, int streakCap,
             Map<ParticipantId, Map<ParticipantId, Integer>> restCoCount,
+            Map<ParticipantId, Set<ParticipantId>> lastRestGroup,
             Map<ParticipantId, Map<ParticipantId, Integer>> coCount) {
         List<List<ParticipantId>> playing = new ArrayList<>(selectedUnits);
         List<List<ParticipantId>> resting = new ArrayList<>();
         for (List<ParticipantId> unit : units) {
             if (!playing.contains(unit)) resting.add(unit);
         }
+        if (resting.isEmpty()) return playing;
+        // 休みが一巡するセット数。これだけ先まで休みの完全一致を見積もる。
+        int horizon = Math.min(remainingSets, (units.size() + resting.size() - 1) / resting.size() + 1);
+        long repeats = simulate(units, playCount, consecutivePlays, playing, required, horizon, lastRestGroup)[1];
         long restCost = restGroupCost(resting, restCoCount);
         long selCost = selectionCost(playing, coCount, true);
-        for (int iter = 0; iter < units.size() && restCost > 0; iter++) {
-            // 休みの重みが下がる入れ替え候補を、(休みの重み, 同コートの偏り) の良い順に試す。
-            List<long[]> moves = new ArrayList<>(); // {休みの重み, 共起コスト, ri, si}
+        for (int iter = 0; iter < units.size() && (repeats > 0 || restCost > 0); iter++) {
+            long[] best = null; // {同じ顔ぶれ, 休みの重み, 共起コスト, ri, si}
             for (int ri = 0; ri < resting.size(); ri++) {
                 List<ParticipantId> r = resting.get(ri);
                 for (int si = 0; si < playing.size(); si++) {
@@ -960,51 +978,73 @@ public class MatchingDomainService {
                     resting.set(ri, s);
                     long c = restGroupCost(resting, restCoCount);
                     resting.set(ri, r);
-                    if (c >= restCost) continue;
                     playing.set(si, r);
                     long sel = selectionCost(playing, coCount, true);
+                    long[] sim = null;
+                    boolean candidate = c < restCost || repeats > 0;
+                    if (candidate) {
+                        sim = simulate(units, playCount, consecutivePlays, playing, required, remainingSets,
+                                lastRestGroup, horizon);
+                    }
                     playing.set(si, s);
-                    if (sel > selCost) continue; // 同じコートの顔ぶれの偏りは悪化させない
-                    moves.add(new long[] {c, sel, ri, si});
+                    if (sim == null || sim[0] > streakCap) continue;
+                    long rep = sim[1];
+                    boolean better = rep < repeats || (rep == repeats && c < restCost && sel <= selCost);
+                    if (!better) continue;
+                    long[] move = {rep, c, sel, ri, si};
+                    if (best == null || Arrays.compare(move, 0, 3, best, 0, 3) < 0) best = move;
                 }
             }
-            moves.sort(Comparator.<long[]>comparingLong(m -> m[0]).thenComparingLong(m -> m[1]));
-            boolean moved = false;
-            for (long[] m : moves) {
-                int ri = (int) m[2], si = (int) m[3];
-                List<ParticipantId> r = resting.get(ri);
-                List<ParticipantId> s = playing.get(si);
-                playing.set(si, r);
-                if (simulateMaxStreak(units, playCount, consecutivePlays, playing, required, remainingSets)
-                        <= streakCap) {
-                    resting.set(ri, s);
-                    restCost = m[0];
-                    selCost = m[1];
-                    moved = true;
-                    break;
-                }
-                playing.set(si, s);
-            }
-            if (!moved) break;
+            if (best == null) break;
+            int ri = (int) best[3], si = (int) best[4];
+            List<ParticipantId> r = resting.get(ri);
+            resting.set(ri, playing.get(si));
+            playing.set(si, r);
+            repeats = best[0];
+            restCost = best[1];
+            selCost = best[2];
         }
         return playing;
     }
 
-    /**
-     * 出場ユニットの決め方を従来の輪番(出場回数→連続出場数の順で選ぶ)に固定して
-     * {@code sets} セット回したときの、最長連続出場セット数を返す(途中で誰かが連続で休むことに
-     * なるなら {@link Integer#MAX_VALUE})。1セット目は {@code firstPlaying} を出場させる
-     * (null なら従来の輪番で選ぶ)。状態は複製して使い、引数は書き換えない。
-     * 同じ(出場回数, 連続出場)の人同士は以後の動きも同じなので、同順位の並びに依らず結果は決まる。
-     */
+    /** {@link #simulate} の最長連続出場だけを返す(休みの完全一致は数えない)。 */
     private int simulateMaxStreak(
             List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
             Map<ParticipantId, Integer> consecutivePlays, List<List<ParticipantId>> firstPlaying,
             int required, int sets) {
+        return (int) simulate(units, playCount, consecutivePlays, firstPlaying, required, sets, null, 0)[0];
+    }
+
+    /** {@code sets} セット分だけ回し、その全セットで休みの完全一致を数える。 */
+    private long[] simulate(
+            List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> consecutivePlays, List<List<ParticipantId>> firstPlaying,
+            int required, int sets, Map<ParticipantId, Set<ParticipantId>> lastRestGroup) {
+        return simulate(units, playCount, consecutivePlays, firstPlaying, required, sets, lastRestGroup, sets);
+    }
+
+    /**
+     * 出場ユニットの決め方を従来の輪番(出場回数→連続出場数の順で選ぶ)に固定して
+     * {@code sets} セット回したときの {最長連続出場セット数, 休みの完全一致の人数} を返す
+     * (途中で誰かが連続で休むことになるなら最長連続出場は {@link Integer#MAX_VALUE})。
+     * 休みの完全一致(前回休んだときとまったく同じ顔ぶれでまた休む人数)は、先頭
+     * {@code repeatHorizon} セットの分だけ数える({@code lastRestGroup} が null なら数えない)。
+     * 1セット目は {@code firstPlaying} を出場させる(null なら従来の輪番で選ぶ)。
+     * 状態は複製して使い、引数は書き換えない。同じ(出場回数, 連続出場)の人同士は以後の動きも
+     * 同じなので、同順位の並びに依らず最長連続出場は決まる。
+     */
+    private long[] simulate(
+            List<List<ParticipantId>> units, Map<ParticipantId, Integer> playCount,
+            Map<ParticipantId, Integer> consecutivePlays, List<List<ParticipantId>> firstPlaying,
+            int required, int sets, Map<ParticipantId, Set<ParticipantId>> lastRestGroup,
+            int repeatHorizon) {
         Map<ParticipantId, Integer> count = new HashMap<>(playCount);
         Map<ParticipantId, Integer> streak = new HashMap<>(consecutivePlays);
+        Map<ParticipantId, Set<ParticipantId>> lastRest =
+                lastRestGroup == null ? null : new HashMap<>(lastRestGroup);
         Comparator<List<ParticipantId>> order = unitOrder(count, streak);
-        int max = 0;
+        long max = 0;
+        long repeats = 0;
         for (List<ParticipantId> u : units) max = Math.max(max, streak.get(u.get(0)));
         Set<List<ParticipantId>> restedLast = new HashSet<>();
         for (int k = 0; k < sets; k++) {
@@ -1018,6 +1058,7 @@ public class MatchingDomainService {
             }
             Set<List<ParticipantId>> playingSet = new HashSet<>(sel);
             Set<List<ParticipantId>> rested = new HashSet<>();
+            Set<ParticipantId> restPeople = new HashSet<>();
             for (List<ParticipantId> u : units) {
                 if (playingSet.contains(u)) {
                     int st = streak.get(u.get(0)) + 1;
@@ -1027,14 +1068,23 @@ public class MatchingDomainService {
                     }
                     max = Math.max(max, st);
                 } else {
-                    if (restedLast.contains(u)) return Integer.MAX_VALUE;
+                    if (restedLast.contains(u)) return new long[] {Integer.MAX_VALUE, repeats};
                     for (ParticipantId p : u) streak.put(p, 0);
                     rested.add(u);
+                    restPeople.addAll(u);
                 }
+            }
+            if (lastRest != null && k < repeatHorizon && restPeople.size() >= 2) {
+                for (ParticipantId p : restPeople) {
+                    if (restPeople.equals(lastRest.get(p))) repeats++;
+                }
+            }
+            if (lastRest != null) {
+                for (ParticipantId p : restPeople) lastRest.put(p, restPeople);
             }
             restedLast = rested;
         }
-        return max;
+        return new long[] {max, repeats};
     }
 
     /**
