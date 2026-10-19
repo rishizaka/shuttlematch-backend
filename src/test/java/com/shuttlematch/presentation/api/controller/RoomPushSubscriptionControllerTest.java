@@ -26,6 +26,11 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(RoomPushSubscriptionController.class)
 class RoomPushSubscriptionControllerTest {
 
+    // 運営者トークンの検証はインターセプタ経由で全 @WebMvcTest スライスに載るため、
+    // ここではモックにして検証自体は素通りさせる(検証の挙動は OrganizerAuthorizationTest)。
+    @MockitoBean
+    private com.shuttlematch.application.usecase.room.VerifyOrganizerUseCase verifyOrganizerUseCase;
+
     private static final String TOKEN = "ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]";
 
     @Autowired

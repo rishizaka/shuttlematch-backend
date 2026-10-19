@@ -8,6 +8,8 @@ import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.presentation.api.request.FixedPairRequest;
 import com.shuttlematch.presentation.api.response.RoomResponse;
 
+import com.shuttlematch.presentation.api.RequiresOrganizer;
+
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,6 +37,7 @@ public class FixedPairController {
     }
 
     /** 固定ペアを追加する。 */
+    @RequiresOrganizer
     @PostMapping
     public RoomResponse add(
             @PathVariable UUID roomId,
@@ -47,6 +50,7 @@ public class FixedPairController {
     }
 
     /** 固定ペアを解除する。 */
+    @RequiresOrganizer
     @DeleteMapping("/{participantA}/{participantB}")
     public RoomResponse remove(
             @PathVariable UUID roomId,

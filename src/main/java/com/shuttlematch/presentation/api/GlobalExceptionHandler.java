@@ -2,6 +2,7 @@ package com.shuttlematch.presentation.api;
 
 import com.shuttlematch.application.ForbiddenOperationException;
 import com.shuttlematch.application.InvalidCredentialsException;
+import com.shuttlematch.application.OrganizerForbiddenException;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.application.TooManyRequestsException;
 
@@ -63,6 +64,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ForbiddenOperationException.class)
     public ProblemDetail handleForbidden(ForbiddenOperationException ex) {
         return problem(HttpStatus.FORBIDDEN, "操作が許可されていません", ex.getMessage());
+    }
+
+    /** 運営者トークンが無い・一致しない → 403。 */
+    @ExceptionHandler(OrganizerForbiddenException.class)
+    public ProblemDetail handleOrganizerForbidden(OrganizerForbiddenException ex) {
+        return problem(HttpStatus.FORBIDDEN, "運営者のみ実行できます", ex.getMessage());
     }
 
     /** 認証失敗 → 401。 */

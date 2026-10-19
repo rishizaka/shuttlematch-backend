@@ -42,11 +42,19 @@ public class Room {
      * 呼び出し元が多く、影響範囲が無駄に広がるため、生成後にセットする形にしてある)。
      */
     private boolean quickCreated;
+    /** 運営者トークンのハッシュ。平文は保持しない({@link OrganizerToken} 参照)。 */
+    private final String organizerTokenHash;
+    /**
+     * 発行したばかりの運営者トークンの平文。{@link #create} 直後の集約だけが持ち、
+     * 永続化層から復元した集約では常に null。作成レスポンスで一度だけ返すために使う。
+     */
+    private final String issuedOrganizerToken;
 
     private Room(
             RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
-            UserId createdBy, List<Participant> participants, List<Pair> fixedPairs) {
+            UserId createdBy, List<Participant> participants, List<Pair> fixedPairs,
+            String organizerTokenHash, String issuedOrganizerToken) {
         this.id = id;
         this.shareCode = shareCode;
         this.title = title;
@@ -58,6 +66,8 @@ public class Room {
         this.createdBy = createdBy;
         this.participants = participants;
         this.fixedPairs = fixedPairs;
+        this.organizerTokenHash = organizerTokenHash;
+        this.issuedOrganizerToken = issuedOrganizerToken;
     }
 
     /** 新規作成(受付中で開始)。コート数は任意。 */
@@ -82,9 +92,10 @@ public class Room {
         if (courtCount != null && courtCount < 1) {
             throw new IllegalArgumentException("コート数は1以上にしてください");
         }
+        String token = OrganizerToken.generate();
         return new Room(RoomId.newId(), ShareCode.generate(), title, heldAt, location,
                 capacity, courtCount, RoomStatus.OPEN, createdBy, new ArrayList<>(),
-                new ArrayList<>());
+                new ArrayList<>(), OrganizerToken.hash(token), token);
     }
 
     /** 永続化層からの復元用(固定ペア無し)。 */
@@ -96,13 +107,27 @@ public class Room {
                 status, createdBy, participants, List.of());
     }
 
-    /** 永続化層からの復元用(固定ペアを含む)。 */
+    /**
+     * 永続化層からの復元用(固定ペアを含む)。
+     * 運営者トークンを伴わないため、復元した集約は誰も運営者と認めない(fail-closed)。
+     */
     public static Room reconstitute(
             RoomId id, String shareCode, String title, OffsetDateTime heldAt,
             String location, Integer capacity, Integer courtCount, RoomStatus status,
             UserId createdBy, List<Participant> participants, List<Pair> fixedPairs) {
+        return reconstitute(id, shareCode, title, heldAt, location, capacity, courtCount,
+                status, createdBy, participants, fixedPairs, null);
+    }
+
+    /** 永続化層からの復元用(固定ペア・運営者トークンのハッシュを含む)。 */
+    public static Room reconstitute(
+            RoomId id, String shareCode, String title, OffsetDateTime heldAt,
+            String location, Integer capacity, Integer courtCount, RoomStatus status,
+            UserId createdBy, List<Participant> participants, List<Pair> fixedPairs,
+            String organizerTokenHash) {
         return new Room(id, shareCode, title, heldAt, location, capacity, courtCount, status,
-                createdBy, new ArrayList<>(participants), new ArrayList<>(fixedPairs));
+                createdBy, new ArrayList<>(participants), new ArrayList<>(fixedPairs),
+                organizerTokenHash, null);
     }
 
     /** 登録ユーザーを参加させる。重複参加は不可。生成後(途中参加)も可能。 */
@@ -316,5 +341,48 @@ public class Room {
 
     public UserId createdBy() {
         return createdBy;
+    }
+
+    /**
+     * 提示された平文トークンがこのルームの運営者のものか。
+     * <p>
+     * 運営者トークンを導入する前(V19 より前)に作られたルームはハッシュを持たない。
+     * そのまま守ると開催中の運営者が締め出されるので、こうしたルームは従来どおり誰でも
+     * 運営操作ができる扱いにする(導入時点で開催中だったものも数日で終了済みになる)。
+     * 導入後に作られたルームは必ずハッシュを持つので、この抜け道は既存分にしか効かない。
+     */
+    public boolean isOrganizer(String plainToken) {
+        if (organizerTokenHash == null) {
+            return true;
+        }
+        return OrganizerToken.matches(plainToken, organizerTokenHash);
+    }
+
+    /** 運営者トークンのハッシュ(永続化用)。 */
+    public String organizerTokenHash() {
+        return organizerTokenHash;
+    }
+
+    /**
+     * 発行したばかりの運営者トークンの平文。作成直後のみ非 null で、
+     * 永続化層から復元した集約では null。作成レスポンスで一度だけ返すために使う。
+     */
+    public String issuedOrganizerToken() {
+        return issuedOrganizerToken;
+    }
+
+    /**
+     * 発行済みトークンの平文を引き継いだ複製を返す。
+     * 保存後に永続化層から読み直した集約へ、作成時の平文を持ち越すためだけに使う
+     * (平文は DB に無いので、読み直すと失われてしまうため)。
+     */
+    public Room withIssuedOrganizerToken(String plainToken) {
+        Room copy = new Room(id, shareCode, title, heldAt, location, capacity, courtCount, status,
+                createdBy, participants, fixedPairs, organizerTokenHash, plainToken);
+        // quickCreated はコンストラクタ引数に無いので、複製で落とさないよう引き継ぐ。
+        if (quickCreated) {
+            copy.markQuickCreated();
+        }
+        return copy;
     }
 }

@@ -22,6 +22,11 @@ import org.springframework.test.web.servlet.MockMvc;
 @TestPropertySource(properties = "app.cors.allowed-origins=http://localhost:5173")
 class CorsConfigTest {
 
+    // 運営者トークンの検証はインターセプタ経由で全 @WebMvcTest スライスに載るため、
+    // ここではモックにして検証自体は素通りさせる(検証の挙動は OrganizerAuthorizationTest)。
+    @MockitoBean
+    private com.shuttlematch.application.usecase.room.VerifyOrganizerUseCase verifyOrganizerUseCase;
+
     @Autowired
     private MockMvc mockMvc;
 

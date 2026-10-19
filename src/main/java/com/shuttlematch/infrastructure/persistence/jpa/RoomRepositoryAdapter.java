@@ -58,12 +58,17 @@ public class RoomRepositoryAdapter implements RoomRepository {
         entity.setStatus(room.status().name());
         entity.setCreatedBy(room.createdBy().value());
         entity.setQuickCreated(room.quickCreated());
+        entity.setOrganizerTokenHash(room.organizerTokenHash());
         roomJpaRepository.save(entity);
 
         reconcileParticipants(room);
         reconcileFixedPairs(room);
 
-        return findById(room.id()).orElseThrow();
+        Room saved = findById(room.id()).orElseThrow();
+        // 平文トークンは DB に無いので読み直すと失われる。作成直後の保存だけ持ち越す。
+        return room.issuedOrganizerToken() == null
+                ? saved
+                : saved.withIssuedOrganizerToken(room.issuedOrganizerToken());
     }
 
     @Override
@@ -263,7 +268,8 @@ public class RoomRepositoryAdapter implements RoomRepository {
                 RoomStatus.valueOf(entity.getStatus()),
                 UserId.of(entity.getCreatedBy()),
                 participants,
-                fixedPairs);
+                fixedPairs,
+                entity.getOrganizerTokenHash());
         // quickCreated は reconstitute の引数に足すと呼び出し元(テスト含む)が多く影響範囲が
         // 広がるため、生成後にこちらでセットする(Room#quickCreated の javadoc参照)。
         if (entity.isQuickCreated()) {

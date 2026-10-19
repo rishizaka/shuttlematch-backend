@@ -42,6 +42,11 @@ class GameRankingControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    // WebMvcConfig が運営者トークンの検証(OrganizerAuthInterceptor)を差し込むため、
+    // ここではモックにして検証自体は素通りさせる(検証の挙動は OrganizerAuthorizationTest)。
+    @MockitoBean
+    private com.shuttlematch.application.usecase.room.VerifyOrganizerUseCase verifyOrganizerUseCase;
+
     @MockitoBean
     private GetRankingUseCase getRankingUseCase;
 

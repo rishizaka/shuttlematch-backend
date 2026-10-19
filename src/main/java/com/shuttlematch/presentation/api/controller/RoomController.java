@@ -18,6 +18,8 @@ import com.shuttlematch.presentation.api.request.QuickCreateRoomRequest;
 import com.shuttlematch.presentation.api.response.PublicRoomResponse;
 import com.shuttlematch.presentation.api.response.RoomResponse;
 
+import com.shuttlematch.presentation.api.RequiresOrganizer;
+
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -83,7 +85,7 @@ public class RoomController {
                 request.courtCount(),
                 UserId.of(request.createdBy()));
         Room room = createSessionUseCase.execute(command);
-        return RoomResponse.from(room);
+        return RoomResponse.fromCreated(room);
     }
 
     /** かんたん作成: 参加人数・コート数・タイトルのみで、番号参加者の登録と試合表生成まで行う。 */
@@ -95,7 +97,7 @@ public class RoomController {
                 request.courtCount(),
                 request.participantCount(),
                 UserId.of(request.createdBy()));
-        return RoomResponse.from(quickCreateSessionUseCase.execute(command));
+        return RoomResponse.fromCreated(quickCreateSessionUseCase.execute(command));
     }
 
     /**
@@ -144,6 +146,7 @@ public class RoomController {
     }
 
     /** セッションを終了する(終了済みとして履歴に残す)。 */
+    @RequiresOrganizer
     @PostMapping("/api/v1/rooms/{roomId}/close")
     public RoomResponse close(@PathVariable UUID roomId) {
         return RoomResponse.from(closeSessionUseCase.execute(RoomId.of(roomId)));
@@ -154,7 +157,11 @@ public class RoomController {
      * <p>
      * 共有コードをクエリパラメータで必須にしている。認証が無いなかで
      * 「リンクを知っている人だけ」に絞るため({@link DeleteRoomUseCase} に理由を書いてある)。
+     * <p>
+     * 運営者トークン(X-Organizer-Token)も要求する。共有コードは参加者全員が知っているため、
+     * それだけでは運営者以外の削除を防げない。
      */
+    @RequiresOrganizer
     @DeleteMapping("/api/v1/rooms/{roomId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(

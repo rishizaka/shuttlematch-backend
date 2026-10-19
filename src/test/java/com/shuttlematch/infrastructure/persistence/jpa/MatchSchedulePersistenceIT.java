@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.shuttlematch.TestcontainersConfiguration;
 import com.shuttlematch.domain.model.match.MatchSchedule;
+import com.shuttlematch.domain.model.room.OrganizerToken;
 import com.shuttlematch.domain.model.room.ParticipantId;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.repository.MatchScheduleRepository;
@@ -61,12 +62,14 @@ class MatchSchedulePersistenceIT {
                 .executeUpdate();
 
         em.createNativeQuery(
-                        "insert into rooms(id, title, held_at, created_by, share_code) "
-                                + "values (?1, ?2, now(), ?3, ?4)")
+                        "insert into rooms"
+                                + "(id, title, held_at, created_by, share_code, organizer_token_hash) "
+                                + "values (?1, ?2, now(), ?3, ?4, ?5)")
                 .setParameter(1, roomId.value())
                 .setParameter(2, "テスト練習会")
                 .setParameter(3, userId)
                 .setParameter(4, roomId.value().toString().substring(0, 8))
+                .setParameter(5, OrganizerToken.hash(OrganizerToken.generate()))
                 .executeUpdate();
 
         return IntStream.range(0, participantCount)

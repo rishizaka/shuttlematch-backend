@@ -21,6 +21,8 @@ import com.shuttlematch.domain.model.user.UserId;
 import com.shuttlematch.presentation.api.request.AddParticipantRequest;
 import com.shuttlematch.presentation.api.response.RoomResponse;
 
+import com.shuttlematch.presentation.api.RequiresOrganizer;
+
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -66,6 +68,7 @@ public class ParticipantController {
     }
 
     /** 参加登録(登録ユーザーまたはゲスト)。 */
+    @RequiresOrganizer
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public RoomResponse add(
@@ -125,6 +128,7 @@ public class ParticipantController {
     }
 
     /** 参加キャンセル(生成前)。 */
+    @RequiresOrganizer
     @DeleteMapping("/{participantId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void remove(@PathVariable UUID roomId, @PathVariable UUID participantId) {
@@ -132,6 +136,7 @@ public class ParticipantController {
     }
 
     /** 早退(在席状態を LEFT に)。未開始セットの編成対象から外れる。 */
+    @RequiresOrganizer
     @PostMapping("/{participantId}/leave")
     public RoomResponse leave(@PathVariable UUID roomId, @PathVariable UUID participantId) {
         Room room = markParticipantLeftUseCase.execute(
@@ -144,6 +149,7 @@ public class ParticipantController {
      * この {@code /leave} を選んだ人数ぶん並行で呼ぶより安全
      * ({@link MarkParticipantLeftUseCase} の javadoc を参照)。
      */
+    @RequiresOrganizer
     @PostMapping("/leave-bulk")
     public RoomResponse leaveBulk(
             @PathVariable UUID roomId,
@@ -155,6 +161,7 @@ public class ParticipantController {
     }
 
     /** 復帰(在席状態を ACTIVE に戻す)。 */
+    @RequiresOrganizer
     @PostMapping("/{participantId}/reactivate")
     public RoomResponse reactivate(@PathVariable UUID roomId, @PathVariable UUID participantId) {
         Room room = reactivateParticipantUseCase.execute(
@@ -166,6 +173,7 @@ public class ParticipantController {
      * 複数の参加者をまとめて復帰(在席状態を ACTIVE に戻す)させる。
      * まとめて早退にする leave-bulk と同じ理由で、1回の読み込み・保存にまとめている。
      */
+    @RequiresOrganizer
     @PostMapping("/reactivate-bulk")
     public RoomResponse reactivateBulk(
             @PathVariable UUID roomId,
@@ -177,6 +185,7 @@ public class ParticipantController {
     }
 
     /** 名前(ニックネーム)を変更する。番号のまま作った参加者に後から名前を付ける。 */
+    // 保護しない: 参加者本人が番号を名乗る・自分の「早退する」(番号をフリーにする)のにも使うため。
     @PostMapping("/{participantId}/rename")
     public RoomResponse rename(
             @PathVariable UUID roomId,

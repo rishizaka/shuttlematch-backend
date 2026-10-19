@@ -14,6 +14,8 @@ import com.shuttlematch.presentation.api.request.AddSetsRequest;
 import com.shuttlematch.presentation.api.request.GenerateMatchesRequest;
 import com.shuttlematch.presentation.api.response.MatchScheduleResponse;
 
+import com.shuttlematch.presentation.api.RequiresOrganizer;
+
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +55,7 @@ public class MatchController {
     }
 
     /** 試合を生成する(既存があれば再生成)。 */
+    @RequiresOrganizer
     @PostMapping("/generate")
     public MatchScheduleResponse generate(
             @PathVariable UUID roomId,
@@ -64,6 +67,7 @@ public class MatchController {
     }
 
     /** 既存スケジュールにセットを追加する(既存の結果は保持)。setCount 省略時は1セット。 */
+    @RequiresOrganizer
     @PostMapping("/sets")
     public MatchScheduleResponse addSets(
             @PathVariable UUID roomId,
@@ -74,6 +78,7 @@ public class MatchController {
     }
 
     /** 未開始セットを現在の在席者で再編成する(途中参加・早退の反映)。開始済みセットは保持。 */
+    @RequiresOrganizer
     @PostMapping("/replan")
     public MatchScheduleResponse replan(@PathVariable UUID roomId) {
         return MatchScheduleResponse.from(
@@ -81,6 +86,7 @@ public class MatchController {
     }
 
     /** 指定セット(全コート)を開始する(開始時刻を記録)。アクティブなセットは最新開始のものとなる。 */
+    @RequiresOrganizer
     @PostMapping("/sets/{setNumber}/start")
     public MatchScheduleResponse startSet(
             @PathVariable UUID roomId,
@@ -90,6 +96,7 @@ public class MatchController {
     }
 
     /** 進行中(最後に開始した)セットを開始前に戻す(開始時刻を消す)。 */
+    @RequiresOrganizer
     @PostMapping("/sets/{setNumber}/revert")
     public MatchScheduleResponse revertSet(
             @PathVariable UUID roomId,

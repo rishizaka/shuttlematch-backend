@@ -49,6 +49,10 @@ public class RoomEntity {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
+    /** 運営者トークンの SHA-256 ハッシュ(16進64文字)。平文は保存しない。 */
+    @Column(name = "organizer_token_hash", length = 64)
+    private String organizerTokenHash;
+
     // DB の default now() に任せる
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
