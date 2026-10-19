@@ -32,6 +32,10 @@ server:
 
 # アプリ固有の設定
 app:
+  admin:
+    # 運営者本人が全ルームを閲覧するための秘密(サイト全体に1本)。
+    # 未設定なら管理者アクセスは無効。閲覧専用で、破壊的な操作には一切効かない。
+    token: ${APP_ADMIN_TOKEN:}
   cors:
     # フロントエンドのオリジン。本番はデプロイ先ドメインを環境変数 APP_CORS_ALLOWED_ORIGINS で指定する
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}

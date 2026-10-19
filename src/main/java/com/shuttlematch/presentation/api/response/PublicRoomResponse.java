@@ -31,9 +31,17 @@ public record PublicRoomResponse(
         int participantCount) {
 
     public static PublicRoomResponse from(Room room) {
+        return from(room, false);
+    }
+
+    /**
+     * {@code includeRoomId} が true のときだけ roomId を載せる。
+     * 管理者トークンを提示した運営者本人の一覧でのみ true になる(AdminAccess 参照)。
+     */
+    public static PublicRoomResponse from(Room room, boolean includeRoomId) {
         return new PublicRoomResponse(
                 PublicRoomId.of(room.id()),
-                null,
+                includeRoomId ? room.id().value().toString() : null,
                 room.title(),
                 room.heldAt(),
                 room.location(),

@@ -11,7 +11,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * フロントエンド(React / TanStack Start)からの API 呼び出しを許可するために使う。
  */
 @Configuration
-@EnableConfigurationProperties(CorsProperties.class)
+@EnableConfigurationProperties({CorsProperties.class, AdminProperties.class})
 public class CorsConfig implements WebMvcConfigurer {
 
     private final CorsProperties corsProperties;

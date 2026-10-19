@@ -22,12 +22,15 @@ import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import com.shuttlematch.infrastructure.config.AdminAccess;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +48,10 @@ public class RoomController {
     private final CloseRoomUseCase closeSessionUseCase;
     private final QuickCreateRoomUseCase quickCreateSessionUseCase;
     private final DeleteRoomUseCase deleteRoomUseCase;
+    private final AdminAccess adminAccess;
+
+    /** 管理者トークンを載せるリクエストヘッダ名。 */
+    public static final String ADMIN_TOKEN_HEADER = "X-Admin-Token";
 
     public RoomController(
             CreateRoomUseCase createSessionUseCase,
@@ -53,7 +60,8 @@ public class RoomController {
             ListRoomsUseCase listSessionsUseCase,
             CloseRoomUseCase closeSessionUseCase,
             QuickCreateRoomUseCase quickCreateSessionUseCase,
-            DeleteRoomUseCase deleteRoomUseCase) {
+            DeleteRoomUseCase deleteRoomUseCase,
+            AdminAccess adminAccess) {
         this.createSessionUseCase = createSessionUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.getRoomByShareCodeUseCase = getRoomByShareCodeUseCase;
@@ -61,6 +69,7 @@ public class RoomController {
         this.closeSessionUseCase = closeSessionUseCase;
         this.quickCreateSessionUseCase = quickCreateSessionUseCase;
         this.deleteRoomUseCase = deleteRoomUseCase;
+        this.adminAccess = adminAccess;
     }
 
     @PostMapping("/api/v1/rooms")
@@ -100,10 +109,27 @@ public class RoomController {
     public List<PublicRoomResponse> list(
             @RequestParam(name = "status", required = false) RoomStatus status,
             @RequestParam(name = "heldFrom", required = false) OffsetDateTime heldFrom,
-            @RequestParam(name = "heldTo", required = false) OffsetDateTime heldTo) {
+            @RequestParam(name = "heldTo", required = false) OffsetDateTime heldTo,
+            @RequestHeader(name = ADMIN_TOKEN_HEADER, required = false) String adminToken) {
+        // 管理者トークンを提示した運営者本人にだけ roomId を載せる。合っていなければ
+        // 黙って通常の一覧を返す(エラーにしない)。不正なトークンでも「合っていない」以上の
+        // 情報を与えないため。
+        boolean admin = adminAccess.matches(adminToken);
         return listSessionsUseCase.execute(status, heldFrom, heldTo).stream()
-                .map(PublicRoomResponse::from)
+                .map(room -> PublicRoomResponse.from(room, admin))
                 .toList();
+    }
+
+    /**
+     * 管理者トークンの確認。管理画面で貼られたトークンがその場で正しいか返すためだけにある。
+     * 一致すれば 204、それ以外は 403。トークンは 256bit の乱数なので総当たりは現実的でない。
+     */
+    @GetMapping("/api/v1/admin/verify")
+    public ResponseEntity<Void> verifyAdmin(
+            @RequestHeader(name = ADMIN_TOKEN_HEADER, required = false) String adminToken) {
+        return adminAccess.matches(adminToken)
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.status(HttpStatus.FORBIDDEN).build();
     }
 
     @GetMapping("/api/v1/rooms/{roomId}")

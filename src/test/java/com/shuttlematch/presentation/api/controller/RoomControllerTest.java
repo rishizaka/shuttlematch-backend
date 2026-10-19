@@ -30,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest({RoomController.class, ParticipantController.class})
+@org.springframework.context.annotation.Import(RoomControllerTest.AdminTokenConfig.class)
 class RoomControllerTest {
 
     @Autowired
@@ -76,6 +77,15 @@ class RoomControllerTest {
 
     @MockitoBean
     private com.shuttlematch.application.usecase.room.ClaimNextParticipantUseCase claimNextParticipantUseCase;
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class AdminTokenConfig {
+        @org.springframework.context.annotation.Bean
+        com.shuttlematch.infrastructure.config.AdminAccess adminAccess() {
+            return new com.shuttlematch.infrastructure.config.AdminAccess(
+                    new com.shuttlematch.infrastructure.config.AdminProperties("test-admin-token"));
+        }
+    }
 
     private Room sampleSession() {
         return Room.create(
@@ -148,6 +158,45 @@ class RoomControllerTest {
                 // shareCode と名簿も伏せたまま。
                 .andExpect(jsonPath("$[0].shareCode").doesNotExist())
                 .andExpect(jsonPath("$[0].participants").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET list: 管理者トークンを出すと roomId が載る(運営者本人が全部見るため)")
+    void listExposesRoomIdForAdmin() throws Exception {
+        Room room = sampleSession();
+        when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
+
+        mockMvc.perform(get("/api/v1/rooms").header("X-Admin-Token", "test-admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(room.id().value().toString()))
+                // 閲覧に要らないものは管理者にも返さない(漏れたときの被害を広げない)。
+                .andExpect(jsonPath("$[0].shareCode").doesNotExist())
+                .andExpect(jsonPath("$[0].participants").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET list: 間違った管理者トークンは、エラーにせず通常の一覧を返す")
+    void listIgnoresWrongAdminToken() throws Exception {
+        Room room = sampleSession();
+        when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
+
+        mockMvc.perform(get("/api/v1/rooms").header("X-Admin-Token", "wrong"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").doesNotExist())
+                .andExpect(jsonPath("$[0].publicId").exists());
+    }
+
+    @Test
+    @DisplayName("GET admin/verify: 正しいトークンは 204、違えば 403")
+    void verifyAdminToken() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/verify").header("X-Admin-Token", "test-admin-token"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/admin/verify").header("X-Admin-Token", "wrong"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/admin/verify"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
