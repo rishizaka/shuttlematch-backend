@@ -95,22 +95,57 @@ class RemoveParticipantUseCaseTest {
         assertThat(roomRepository.findById(room.id()).orElseThrow().participants()).hasSize(6);
     }
 
-    @Test
-    @DisplayName("1セットでも開始した後は、末尾でも削除できない")
-    void rejectsAfterAnySetStarted() {
-        Room room = generatedRoom(6, 1, 5);
-        ParticipantId last = room.participants().get(5).id();
+    /** 指定したセット番号までを開始済みにする。 */
+    private void startSet(Room room, int setNumber) {
         MatchSchedule schedule = matchScheduleRepository.findByRoomId(room.id()).orElseThrow();
         List<Match> started = schedule.matches().stream()
-                .map(m -> m.setNumber() == 1 ? m.withStartedAt(OffsetDateTime.now()) : m)
+                .map(m -> m.setNumber() == setNumber ? m.withStartedAt(OffsetDateTime.now()) : m)
                 .toList();
         matchScheduleRepository.save(new MatchSchedule(room.id(), started));
+    }
+
+    @Test
+    @DisplayName("開始済みセットに出ている参加者は、末尾でも削除できない(履歴を壊さないため)")
+    void rejectsWhenPlayedInStartedSet() {
+        // 4人1コートなら休憩が出ないので、末尾の参加者も必ず第1セットに出る。
+        // (6人1コートだと末尾が休憩に回ることがあり、その場合は削除できるのが正しい)
+        Room room = generatedRoom(4, 1, 5);
+        ParticipantId last = room.participants().get(3).id();
+        startSet(room, 1);
+        MatchSchedule schedule = matchScheduleRepository.findByRoomId(room.id()).orElseThrow();
+        boolean lastPlayed = schedule.matches().stream()
+                .filter(Match::isStarted)
+                .anyMatch(m -> m.hasParticipant(last));
+        assertThat(lastPlayed).isTrue();
 
         assertThatThrownBy(() -> useCase.execute(room.id(), last))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("開始した後");
+                .hasMessageContaining("すでに始まったセットに出ている");
 
-        assertThat(roomRepository.findById(room.id()).orElseThrow().participants()).hasSize(6);
+        assertThat(roomRepository.findById(room.id()).orElseThrow().participants()).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("セット開始後でも、まだ試合に出ていない参加者は削除できる(間違えて追加したゲスト)")
+    void removesParticipantNotInAnyStartedSet() {
+        Room room = generatedRoom(6, 1, 5);
+        startSet(room, 1);
+
+        // 第1セットが始まったあとに追加した7人目。まだどの試合にも出ていない。
+        room.addGuest("7");
+        roomRepository.save(room);
+        Room added = roomRepository.findById(room.id()).orElseThrow();
+        ParticipantId newcomer = added.participants().get(6).id();
+
+        useCase.execute(room.id(), newcomer);
+
+        Room after = roomRepository.findById(room.id()).orElseThrow();
+        assertThat(after.participants()).hasSize(6);
+        assertThat(after.participants()).noneMatch(p -> p.id().equals(newcomer));
+        // 開始済みの第1セットは履歴として残り、未開始セットからも参照が消えている。
+        MatchSchedule schedule = matchScheduleRepository.findByRoomId(room.id()).orElseThrow();
+        assertThat(schedule.matches()).anyMatch(Match::isStarted);
+        assertThat(schedule.matches()).noneMatch(m -> m.hasParticipant(newcomer));
     }
 
     @Test

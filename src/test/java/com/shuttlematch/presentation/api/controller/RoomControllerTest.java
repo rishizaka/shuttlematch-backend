@@ -132,8 +132,8 @@ class RoomControllerTest {
     }
 
     @Test
-    @DisplayName("GET list: 終了したルームは roomId を返す(過去の試合表は誰でも見られる)")
-    void listExposesRoomIdForClosedRoom() throws Exception {
+    @DisplayName("GET list: 終了したルームでも roomId は返さない(過去の開催も参加者だけが開ける)")
+    void listHidesRoomIdForClosedRoom() throws Exception {
         Room room = sampleSession();
         room.close();
         when(listSessionsUseCase.execute(any(), any(), any())).thenReturn(java.util.List.of(room));
@@ -141,8 +141,11 @@ class RoomControllerTest {
         mockMvc.perform(get("/api/v1/rooms"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("CLOSED"))
-                .andExpect(jsonPath("$[0].id").value(room.id().value().toString()))
-                // 終了していても shareCode と名簿は伏せたまま。
+                // 開催中と同じく、一覧からは roomId を辿れない。作成・参加した端末は
+                // publicId と自分の roomId を突き合わせてリンクを張る。
+                .andExpect(jsonPath("$[0].id").doesNotExist())
+                .andExpect(jsonPath("$[0].publicId").exists())
+                // shareCode と名簿も伏せたまま。
                 .andExpect(jsonPath("$[0].shareCode").doesNotExist())
                 .andExpect(jsonPath("$[0].participants").doesNotExist());
     }

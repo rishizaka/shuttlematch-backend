@@ -1,7 +1,6 @@
 package com.shuttlematch.presentation.api.response;
 
 import com.shuttlematch.domain.model.room.Room;
-import com.shuttlematch.domain.model.room.RoomStatus;
 
 import java.time.OffsetDateTime;
 
@@ -14,11 +13,11 @@ import java.time.OffsetDateTime;
  * 誰でも叩けてしまう(この API 群にはまだ認証が無い)。かわりに {@link PublicRoomId} を返し、
  * 既にそのルームを知っているクライアントだけが自分の roomId と突き合わせてリンクを張れる。
  * <p>
- * <b>終了したルームだけは {@code id} を返す。</b>過去の試合表は記録として誰でも見られる
- * ようにするため。終了したルームは試合表を変更できず(RoomStatus の
- * {@code allowsMatchChanges})、削除には共有コードが要る(DeleteRoomUseCase)ので、
- * roomId が知られても壊されない。<b>shareCode はここに載せないこと</b>
- * (載せると一覧から順に削除できてしまう)。
+ * <b>終了したルームでも {@code id} は返さない。</b>以前は「過去の試合表は記録として誰でも
+ * 見られるように」終了したものだけ id を載せていたが、2026-10-19 にやめた。練習会の
+ * 参加者の並びは身内の記録であって、通りすがりに一覧から辿れる必要は無いため。
+ * 開催中と同じく、作成・参加した端末(自分の roomId と突き合わせる)と共有URLを持つ人だけが
+ * 開ける。<b>shareCode もここに載せないこと</b>(載せると一覧から順に削除できてしまう)。
  */
 public record PublicRoomResponse(
         String publicId,
@@ -32,10 +31,9 @@ public record PublicRoomResponse(
         int participantCount) {
 
     public static PublicRoomResponse from(Room room) {
-        boolean closed = room.status() == RoomStatus.CLOSED;
         return new PublicRoomResponse(
                 PublicRoomId.of(room.id()),
-                closed ? room.id().value().toString() : null,
+                null,
                 room.title(),
                 room.heldAt(),
                 room.location(),

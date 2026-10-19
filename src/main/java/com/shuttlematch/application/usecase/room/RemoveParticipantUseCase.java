@@ -81,12 +81,18 @@ public class RemoveParticipantUseCase {
             throw new IllegalStateException(
                     "削除できるのは一番後ろの番号の参加者だけです(それ以外は早退を使ってください)");
         }
+        // 開始済みセットは履歴として残す(ReplanFutureSets は未開始セットしか組み直さない)ため、
+        // そこに出ている参加者の行を消すと matches からの参照が残って外部キー制約に反する。
+        // 逆に言えば、開始済みセットに一度も出ていない参加者なら安全に消せる。
+        // 「間違えて追加したゲスト」はまだどの試合にも出ていないので、セット開始後でも消せる。
         Optional<MatchSchedule> schedule = matchScheduleRepository.findByRoomId(roomId);
-        boolean anySetStarted = schedule.isPresent()
-                && schedule.get().matches().stream().anyMatch(Match::isStarted);
-        if (anySetStarted) {
+        boolean playedInStartedSet = schedule.isPresent()
+                && schedule.get().matches().stream()
+                        .filter(Match::isStarted)
+                        .anyMatch(m -> m.hasParticipant(participantId));
+        if (playedInStartedSet) {
             throw new IllegalStateException(
-                    "1セットでも開始した後は削除できません(早退を使ってください)");
+                    "すでに始まったセットに出ているため削除できません(早退を使ってください)");
         }
 
         // 早退と同じ手順でいったん編成対象から外す(在席のままだと、この参加者を参照する
@@ -97,8 +103,9 @@ public class RemoveParticipantUseCase {
         }
         roomRepository.save(room);
 
-        // 試合表があれば、この参加者を含まない形に組み直す。まだどのセットも開始していない
-        // ことを検証済みなので、組み直し後は既存の試合データからこの参加者への参照が無くなる。
+        // 試合表があれば、この参加者を含まない形に組み直す。組み直すのは未開始セットだけだが、
+        // この参加者が開始済みセットに出ていないことは検証済みなので、組み直し後は
+        // 既存の試合データからこの参加者への参照が無くなる。
         if (schedule.isPresent()) {
             replanFutureSetsUseCase.execute(roomId);
         }
