@@ -113,6 +113,27 @@ class OrganizerAuthorizationTest {
     }
 
     @Test
+    @DisplayName("運営者トークンの確認: 合っていれば 204")
+    void organizerCheckPasses() throws Exception {
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/organizer-check", ROOM_ID)
+                        .header(OrganizerAuthInterceptor.HEADER, TOKEN))
+                .andExpect(status().isNoContent());
+
+        verify(verifyOrganizerUseCase).execute(eq(RoomId.of(ROOM_ID)), eq(TOKEN));
+    }
+
+    @Test
+    @DisplayName("運営者トークンの確認: 違えば 403")
+    void organizerCheckRejects() throws Exception {
+        doThrow(new OrganizerForbiddenException("運営者のみ"))
+                .when(verifyOrganizerUseCase).execute(any(), any());
+
+        mockMvc.perform(get("/api/v1/rooms/{roomId}/organizer-check", ROOM_ID)
+                        .header(OrganizerAuthInterceptor.HEADER, "wrong"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("ヘッダが無くても検証は呼ばれる(null を渡して弾かせる)")
     void verifiesEvenWithoutHeader() throws Exception {
         doThrow(new OrganizerForbiddenException("トークンがありません"))

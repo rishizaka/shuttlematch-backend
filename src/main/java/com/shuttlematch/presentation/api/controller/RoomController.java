@@ -146,6 +146,21 @@ public class RoomController {
     }
 
     /** セッションを終了する(終了済みとして履歴に残す)。 */
+    /**
+     * 提示した運営者トークンがこのルームのものか確かめる。合っていれば 204、違えば 403、
+     * ルームが無ければ 404(判定はすべて {@link RequiresOrganizer} のインターセプターが行う)。
+     * <p>
+     * 運営者用リンク(別の端末に運営権を渡すリンク)を開いた端末が、受け取ったトークンを
+     * 保存する前に本物か確かめるのに使う。偽物や打ち間違いを保存して「運営者になれた」と
+     * 誤表示しないため。トークン導入前のルーム(ハッシュ無し)は常に 204 になる。
+     */
+    @RequiresOrganizer
+    @GetMapping("/api/v1/rooms/{roomId}/organizer-check")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void organizerCheck(@PathVariable UUID roomId) {
+        // 検証はインターセプターで済んでいる。ここまで来たら運営者。
+    }
+
     @RequiresOrganizer
     @PostMapping("/api/v1/rooms/{roomId}/close")
     public RoomResponse close(@PathVariable UUID roomId) {
