@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * (FOR UPDATE SKIP LOCKED)で原子的に行うため、同時に複数人が押しても取り合いにならず、
  * それぞれ別の番号が割り振られる。
  * <p>
- * 名前は必須({@link JoinRoomUseCase} と同じ)。以前は空欄なら「ゲスト」を既定名にして
+ * 名前は必須。以前は空欄なら「ゲスト」を既定名にして
  * いたが、実際に空欄のまま参加する人が出ると、「番号のまま(誰も参加していない)」枠と
  * guestName="ゲスト" の実在の参加者が運営者から見分けづらくなる混乱が起きたため、
  * 必須に変更した。

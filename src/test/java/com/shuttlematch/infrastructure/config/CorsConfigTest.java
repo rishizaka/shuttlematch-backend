@@ -4,7 +4,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.shuttlematch.application.usecase.room.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.room.GetMatchScheduleUseCase;
 import com.shuttlematch.presentation.api.controller.MatchController;
 import java.util.UUID;
@@ -30,8 +29,6 @@ class CorsConfigTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockitoBean
-    private GenerateMatchesUseCase generateMatchesUseCase;
     @MockitoBean
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
     @MockitoBean

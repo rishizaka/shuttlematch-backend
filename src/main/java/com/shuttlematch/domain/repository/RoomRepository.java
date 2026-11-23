@@ -19,20 +19,6 @@ public interface RoomRepository {
     Room save(Room room);
 
     /**
-     * 参加者を1名だけ追記する(集約全体の同期をせず、その1行だけを INSERT する)。
-     * <p>
-     * {@link #save(Room)} は集約全体を DB と同期し、ロード時点に無い参加者を削除するため、
-     * 複数人が同時に参加すると互いの参加を消してしまう。自己参加(join)のように「追記だけ」で
-     * 済む操作はこちらを使い、同時実行でも他者を消さないようにする。番号(並び順)は
-     * 永続化層の連番で採番される。
-     * <p>
-     * デフォルト実装は集約経由(単一スレッド前提のテスト用フェイク向け)。JPA 実装は直接 INSERT する。
-     */
-    default void insertParticipant(RoomId roomId, Participant participant) {
-        findById(roomId).ifPresent(this::save);
-    }
-
-    /**
      * 「空き」枠({@link Participant#isClaimableSlot()}: 番号のまま・フリー・
      * 遅刻者・ビジターのいずれか)のうち、番号が一番若いものを1つだけ選んで名前を付け、
      * その participantId を返す(無ければ空)。同時に複数人が呼んでも、それぞれ別の

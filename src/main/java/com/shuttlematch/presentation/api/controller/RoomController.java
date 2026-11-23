@@ -1,19 +1,15 @@
 package com.shuttlematch.presentation.api.controller;
 
 import com.shuttlematch.application.usecase.room.CloseRoomUseCase;
-import com.shuttlematch.application.usecase.room.CreateRoomCommand;
-import com.shuttlematch.application.usecase.room.CreateRoomUseCase;
 import com.shuttlematch.application.usecase.room.DeleteRoomUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomByShareCodeUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomUseCase;
 import com.shuttlematch.application.usecase.room.ListRoomsUseCase;
 import com.shuttlematch.application.usecase.room.QuickCreateRoomCommand;
 import com.shuttlematch.application.usecase.room.QuickCreateRoomUseCase;
-import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.domain.model.room.RoomStatus;
 import com.shuttlematch.domain.model.user.UserId;
-import com.shuttlematch.presentation.api.request.CreateRoomRequest;
 import com.shuttlematch.presentation.api.request.QuickCreateRoomRequest;
 import com.shuttlematch.presentation.api.response.PublicRoomResponse;
 import com.shuttlematch.presentation.api.response.RoomResponse;
@@ -43,7 +39,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class RoomController {
 
-    private final CreateRoomUseCase createSessionUseCase;
     private final GetRoomUseCase getRoomUseCase;
     private final GetRoomByShareCodeUseCase getRoomByShareCodeUseCase;
     private final ListRoomsUseCase listSessionsUseCase;
@@ -56,7 +51,6 @@ public class RoomController {
     public static final String ADMIN_TOKEN_HEADER = "X-Admin-Token";
 
     public RoomController(
-            CreateRoomUseCase createSessionUseCase,
             GetRoomUseCase getRoomUseCase,
             GetRoomByShareCodeUseCase getRoomByShareCodeUseCase,
             ListRoomsUseCase listSessionsUseCase,
@@ -64,7 +58,6 @@ public class RoomController {
             QuickCreateRoomUseCase quickCreateSessionUseCase,
             DeleteRoomUseCase deleteRoomUseCase,
             AdminAccess adminAccess) {
-        this.createSessionUseCase = createSessionUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.getRoomByShareCodeUseCase = getRoomByShareCodeUseCase;
         this.listSessionsUseCase = listSessionsUseCase;
@@ -72,20 +65,6 @@ public class RoomController {
         this.quickCreateSessionUseCase = quickCreateSessionUseCase;
         this.deleteRoomUseCase = deleteRoomUseCase;
         this.adminAccess = adminAccess;
-    }
-
-    @PostMapping("/api/v1/rooms")
-    @ResponseStatus(HttpStatus.CREATED)
-    public RoomResponse create(@Valid @RequestBody CreateRoomRequest request) {
-        CreateRoomCommand command = new CreateRoomCommand(
-                request.title(),
-                request.heldAt(),
-                request.location(),
-                request.capacity(),
-                request.courtCount(),
-                UserId.of(request.createdBy()));
-        Room room = createSessionUseCase.execute(command);
-        return RoomResponse.fromCreated(room);
     }
 
     /** かんたん作成: 参加人数・コート数・タイトルのみで、番号参加者の登録と試合表生成まで行う。 */

@@ -200,14 +200,6 @@ public class RoomRepositoryAdapter implements RoomRepository {
     }
 
     @Override
-    public void insertParticipant(RoomId roomId, Participant participant) {
-        // 集約全体を reconcile せず、この参加者1行だけを INSERT する。
-        // join_order(bigserial)が原子的に採番されるため、同時参加でも重複・欠番・
-        // 他者の消失が起きない。
-        participantJpaRepository.save(toEntity(roomId.value(), participant));
-    }
-
-    @Override
     public Optional<ParticipantId> claimNextFreeSlot(RoomId roomId, String name) {
         // lockNextFreeSlot が FOR UPDATE SKIP LOCKED で1行だけ行ロックするので、
         // 同時に複数リクエストが来てもそれぞれ別の行を掴む(取り合いにならない)。

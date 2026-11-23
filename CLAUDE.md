@@ -125,14 +125,14 @@ POST /api/v1/games/{game}/ranking      {playerName, score} → ランクイン�
 
 ## 運営者トークン（2026-10 導入）
 ログインが無いなかで「作成した端末だけが運営操作できる」ようにする仕組み。
-- ルーム作成（`POST /rooms`・`/rooms/quick`）のレスポンスにだけ `organizerToken`（256bit・base64url）を
+- ルーム作成（`POST /rooms/quick`）のレスポンスにだけ `organizerToken`（256bit・base64url）を
   一度だけ載せる。DB には SHA-256 ハッシュ（`rooms.organizer_token_hash`、V19）だけを保存する。
   参照系のレスポンスには項目ごと出さない（出すと共有リンクで全員が運営者になれる）。
 - `@RequiresOrganizer` を付けた API は `X-Organizer-Token` ヘッダの一致を要求し、違えば 403
   （`OrganizerAuthInterceptor` → `VerifyOrganizerUseCase`）。
-  - 保護する: 終了・削除・参加者の追加/削除・早退/復帰（一括含む）・固定ペア・試合表の生成/開始/戻す/追加/再編成。
+  - 保護する: 終了・削除・参加者の追加/削除・早退/復帰（一括含む）・固定ペア・試合表のセット開始/戻す/追加/再編成。
   - 保護しない: 参照・`rename`（参加者本人が番号を名乗る／自分の「早退する」でフリーにするのに使う）・
-    `claim-next`・`join`・Push 購読。
+    `claim-next`・Push 購読。
 - **導入前に作られたルーム（ハッシュが null）は従来どおり誰でも運営操作できる**（`Room#isOrganizer`）。
   導入時点で開催中だったルームの運営者を締め出さないため。新規ルームは必ずハッシュを持つ。
 - **反映順に注意**: トークンを扱えない古いクライアントで新規作成すると、作った本人も運営操作できない
@@ -140,3 +140,9 @@ POST /api/v1/games/{game}/ranking      {playerName, score} → ランクイン�
 - 運営者トークンは端末ローカルにしか無い。別端末・共同運営者へは「運営者用リンク」
   （`/rooms/{id}/matches#organizer={token}`、`#` 以降なのでサーバーに送られない）で渡す。
   受け取った側は `GET /rooms/{id}/organizer-check`（`@RequiresOrganizer`・204/403/404）で本物か確かめてから保存する。
+
+## 廃止した API（2026-11）
+受付から始める流れ（ルームを受付中で作る → 参加者が名前で参加 → 運営者があとで生成）は Web・モバイルとも使わなくなったので、
+`POST /api/v1/rooms`・`POST /rooms/{id}/participants/join`・`POST /rooms/{id}/matches/generate` を削除した。
+ルームはかんたん作成（`POST /rooms/quick`）で試合表と同時に作る。
+`RoomStatus` の `PREPARING` / `OPEN` と `Room.create` は、DB に残る古いルームの読み込みとかんたん作成の内部で使うので残している。

@@ -3,13 +3,11 @@ package com.shuttlematch.presentation.api.controller;
 import com.shuttlematch.application.usecase.room.AddParticipantCommand;
 import com.shuttlematch.application.usecase.room.AddParticipantUseCase;
 import com.shuttlematch.application.usecase.room.ClaimNextParticipantUseCase;
-import com.shuttlematch.application.usecase.room.JoinRoomUseCase;
 import com.shuttlematch.application.usecase.room.MarkParticipantLeftUseCase;
 import com.shuttlematch.application.usecase.room.ReactivateParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RemoveParticipantUseCase;
 import com.shuttlematch.application.usecase.room.RenameParticipantUseCase;
 import com.shuttlematch.presentation.api.request.ClaimNextParticipantRequest;
-import com.shuttlematch.presentation.api.request.JoinRoomRequest;
 import com.shuttlematch.presentation.api.request.ParticipantIdsRequest;
 import com.shuttlematch.presentation.api.request.RenameParticipantRequest;
 import com.shuttlematch.presentation.api.response.JoinResponse;
@@ -43,7 +41,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class ParticipantController {
 
     private final AddParticipantUseCase addParticipantUseCase;
-    private final JoinRoomUseCase joinRoomUseCase;
     private final RemoveParticipantUseCase removeParticipantUseCase;
     private final MarkParticipantLeftUseCase markParticipantLeftUseCase;
     private final ReactivateParticipantUseCase reactivateParticipantUseCase;
@@ -52,14 +49,12 @@ public class ParticipantController {
 
     public ParticipantController(
             AddParticipantUseCase addParticipantUseCase,
-            JoinRoomUseCase joinRoomUseCase,
             RemoveParticipantUseCase removeParticipantUseCase,
             MarkParticipantLeftUseCase markParticipantLeftUseCase,
             ReactivateParticipantUseCase reactivateParticipantUseCase,
             RenameParticipantUseCase renameParticipantUseCase,
             ClaimNextParticipantUseCase claimNextParticipantUseCase) {
         this.addParticipantUseCase = addParticipantUseCase;
-        this.joinRoomUseCase = joinRoomUseCase;
         this.removeParticipantUseCase = removeParticipantUseCase;
         this.markParticipantLeftUseCase = markParticipantLeftUseCase;
         this.reactivateParticipantUseCase = reactivateParticipantUseCase;
@@ -79,28 +74,6 @@ public class ParticipantController {
                 new AddParticipantCommand(RoomId.of(roomId), userId, request.guestName());
         Room room = addParticipantUseCase.execute(command);
         return RoomResponse.from(room);
-    }
-
-    /**
-     * 受付中ルームへの自己参加(名前必須)。参加順で番号が自動採番され、
-     * 参加した本人の participantId と割り当て番号を返す。
-     */
-    @PostMapping("/join")
-    @ResponseStatus(HttpStatus.CREATED)
-    public JoinResponse join(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody JoinRoomRequest request) {
-        JoinRoomUseCase.Result result = joinRoomUseCase.execute(RoomId.of(roomId), request.name());
-        List<Participant> participants = result.room().participants();
-        int number = 0;
-        for (int i = 0; i < participants.size(); i++) {
-            if (participants.get(i).id().equals(result.joinedId())) {
-                number = i + 1;
-                break;
-            }
-        }
-        return new JoinResponse(
-                result.joinedId().value().toString(), number, RoomResponse.from(result.room()));
     }
 
     /**
