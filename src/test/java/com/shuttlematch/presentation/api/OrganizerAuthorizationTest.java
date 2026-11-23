@@ -51,8 +51,6 @@ class OrganizerAuthorizationTest {
     private VerifyOrganizerUseCase verifyOrganizerUseCase;
 
     @MockitoBean
-    private com.shuttlematch.application.usecase.room.CreateRoomUseCase createRoomUseCase;
-    @MockitoBean
     private com.shuttlematch.application.usecase.room.GetRoomUseCase getRoomUseCase;
     @MockitoBean
     private com.shuttlematch.application.usecase.room.GetRoomByShareCodeUseCase getRoomByShareCodeUseCase;
@@ -66,8 +64,6 @@ class OrganizerAuthorizationTest {
     private com.shuttlematch.application.usecase.room.DeleteRoomUseCase deleteRoomUseCase;
     @MockitoBean
     private com.shuttlematch.application.usecase.room.AddParticipantUseCase addParticipantUseCase;
-    @MockitoBean
-    private com.shuttlematch.application.usecase.room.JoinRoomUseCase joinRoomUseCase;
     @MockitoBean
     private com.shuttlematch.application.usecase.room.RemoveParticipantUseCase removeParticipantUseCase;
     @MockitoBean

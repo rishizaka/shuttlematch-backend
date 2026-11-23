@@ -1,17 +1,13 @@
 package com.shuttlematch.presentation.api.controller;
 
 import com.shuttlematch.application.usecase.room.AddSetsUseCase;
-import com.shuttlematch.application.usecase.room.GenerateMatchesCommand;
-import com.shuttlematch.application.usecase.room.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.room.GetMatchScheduleUseCase;
 import com.shuttlematch.application.usecase.room.ReplanFutureSetsUseCase;
 import com.shuttlematch.application.usecase.room.RevertSetUseCase;
 import com.shuttlematch.application.usecase.room.StartSetUseCase;
-import com.shuttlematch.domain.model.match.MatchSchedule;
 import com.shuttlematch.application.ResourceNotFoundException;
 import com.shuttlematch.domain.model.room.RoomId;
 import com.shuttlematch.presentation.api.request.AddSetsRequest;
-import com.shuttlematch.presentation.api.request.GenerateMatchesRequest;
 import com.shuttlematch.presentation.api.response.MatchScheduleResponse;
 
 import com.shuttlematch.presentation.api.RequiresOrganizer;
@@ -26,13 +22,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 試合スケジュールの生成・参照を行う REST コントローラ。
+ * 試合スケジュールの参照・セット操作を行う REST コントローラ。
+ * (試合表はルームのかんたん作成で同時に生成される。単独の生成 API は 2026-11 に廃止)
  */
 @RestController
 @RequestMapping("/api/v1/rooms/{roomId}/matches")
 public class MatchController {
 
-    private final GenerateMatchesUseCase generateMatchesUseCase;
     private final GetMatchScheduleUseCase getMatchScheduleUseCase;
     private final StartSetUseCase startSetUseCase;
     private final AddSetsUseCase addSetsUseCase;
@@ -40,30 +36,16 @@ public class MatchController {
     private final RevertSetUseCase revertSetUseCase;
 
     public MatchController(
-            GenerateMatchesUseCase generateMatchesUseCase,
             GetMatchScheduleUseCase getMatchScheduleUseCase,
             StartSetUseCase startSetUseCase,
             AddSetsUseCase addSetsUseCase,
             ReplanFutureSetsUseCase replanFutureSetsUseCase,
             RevertSetUseCase revertSetUseCase) {
-        this.generateMatchesUseCase = generateMatchesUseCase;
         this.getMatchScheduleUseCase = getMatchScheduleUseCase;
         this.startSetUseCase = startSetUseCase;
         this.addSetsUseCase = addSetsUseCase;
         this.replanFutureSetsUseCase = replanFutureSetsUseCase;
         this.revertSetUseCase = revertSetUseCase;
-    }
-
-    /** 試合を生成する(既存があれば再生成)。 */
-    @RequiresOrganizer
-    @PostMapping("/generate")
-    public MatchScheduleResponse generate(
-            @PathVariable UUID roomId,
-            @Valid @RequestBody(required = false) GenerateMatchesRequest request) {
-
-        GenerateMatchesCommand command = toCommand(RoomId.of(roomId), request);
-        MatchSchedule schedule = generateMatchesUseCase.execute(command);
-        return MatchScheduleResponse.from(schedule);
     }
 
     /** 既存スケジュールにセットを追加する(既存の結果は保持)。setCount 省略時は1セット。 */
@@ -112,12 +94,5 @@ public class MatchController {
                 .map(MatchScheduleResponse::from)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "セッション " + roomId + " の試合スケジュールはまだ生成されていません"));
-    }
-
-    private GenerateMatchesCommand toCommand(RoomId roomId, GenerateMatchesRequest request) {
-        if (request == null || request.matchCount() == null) {
-            return new GenerateMatchesCommand(roomId);
-        }
-        return new GenerateMatchesCommand(roomId, request.matchCount());
     }
 }

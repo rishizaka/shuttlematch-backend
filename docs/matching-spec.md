@@ -227,8 +227,8 @@ ShuttleMatch のダブルス試合を自動生成する中核ロジックの仕�
 - [ ] **P12** 早退者が未開始セットに登場しない／途中参加者が出場回数で優先されない
 
 ### 10.3 検証の与え方（推奨手順）
-1. ローカル or 本番 API で `POST /api/v1/rooms/quick`（人数・コート数指定）→
-   `POST /rooms/{id}/matches/generate`（`matchCount` でセット数調整）で生成。
+1. ローカル or 本番 API で `POST /api/v1/rooms/quick`（人数・コート数指定）で、ルームと試合表を同時に生成する。
+   セット数を変えたいときは `POST /rooms/{id}/matches/sets` で足す（単独の生成 API `matches/generate` は 2026-11 に廃止）。
 2. `GET /rooms/{id}/matches` で取得し、番号は participants の並び順を1始まりに写像。
 3. 上記チェックを実行。異なる構成（6人1コート・10人2コート・12人2コート・
    8人2コート＝休みゼロ・固定ペアあり）を横断する。

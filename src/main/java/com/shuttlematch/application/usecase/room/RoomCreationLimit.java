@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 
 /**
- * 1ユーザーが1日に作成できるルーム数の制限。CreateRoomUseCase / QuickCreateRoomUseCase から共通で使う。
+ * 1ユーザーが1日に作成できるルーム数の制限。QuickCreateRoomUseCase から使う。
  * 「1日」は日本時間の暦日で区切る。
  */
 final class RoomCreationLimit {

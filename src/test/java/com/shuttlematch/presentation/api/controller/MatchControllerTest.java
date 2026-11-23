@@ -7,8 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.shuttlematch.application.usecase.room.GenerateMatchesCommand;
-import com.shuttlematch.application.usecase.room.GenerateMatchesUseCase;
 import com.shuttlematch.application.usecase.room.GetMatchScheduleUseCase;
 import com.shuttlematch.domain.model.match.Match;
 import com.shuttlematch.domain.model.match.MatchNumber;
@@ -38,9 +36,6 @@ class MatchControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private GenerateMatchesUseCase generateMatchesUseCase;
-
-    @MockitoBean
     private GetMatchScheduleUseCase getMatchScheduleUseCase;
 
     @MockitoBean
@@ -67,53 +62,6 @@ class MatchControllerTest {
     }
 
     @Test
-    @DisplayName("POST generate: 200 でスケジュールを返す")
-    void generateReturnsSchedule() throws Exception {
-        when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
-                .thenReturn(sampleSchedule());
-
-        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId)
-                        .contentType("application/json")
-                        .content("{\"matchCount\": 15}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.roomId").value(roomId.toString()))
-                .andExpect(jsonPath("$.matchCount").value(1))
-                .andExpect(jsonPath("$.matches[0].matchNumber").value(1))
-                .andExpect(jsonPath("$.matches[0].setNumber").value(1))
-                .andExpect(jsonPath("$.matches[0].pairA.player1Id").exists());
-    }
-
-    @Test
-    @DisplayName("POST generate: ボディ省略でもデフォルトで生成できる")
-    void generateWorksWithoutBody() throws Exception {
-        when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
-                .thenReturn(sampleSchedule());
-
-        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @DisplayName("POST generate: 参加者不足は 400 を返す")
-    void generateReturnsBadRequestWhenTooFewParticipants() throws Exception {
-        when(generateMatchesUseCase.execute(any(GenerateMatchesCommand.class)))
-                .thenThrow(new IllegalArgumentException("最低 4 人必要です"));
-
-        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("最低 4 人必要です"));
-    }
-
-    @Test
-    @DisplayName("POST generate: matchCount が0以下なら 400(バリデーション)")
-    void generateReturnsBadRequestForNonPositiveMatchCount() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/generate", roomId)
-                        .contentType("application/json")
-                        .content("{\"matchCount\": 0}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     @DisplayName("POST sets/{n}/start: 200 で更新後スケジュールを返す")
     void startSetReturnsSchedule() throws Exception {
         when(startSetUseCase.execute(any(RoomId.class), org.mockito.ArgumentMatchers.eq(1)))
@@ -121,7 +69,13 @@ class MatchControllerTest {
 
         mockMvc.perform(post("/api/v1/rooms/{roomId}/matches/sets/{n}/start", roomId, 1))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.matches.length()").value(1));
+                .andExpect(jsonPath("$.matches.length()").value(1))
+                // 応答の形(以前は廃止した POST generate のテストで確かめていた)
+                .andExpect(jsonPath("$.roomId").value(roomId.toString()))
+                .andExpect(jsonPath("$.matchCount").value(1))
+                .andExpect(jsonPath("$.matches[0].matchNumber").value(1))
+                .andExpect(jsonPath("$.matches[0].setNumber").value(1))
+                .andExpect(jsonPath("$.matches[0].pairA.player1Id").exists());
     }
 
     @Test

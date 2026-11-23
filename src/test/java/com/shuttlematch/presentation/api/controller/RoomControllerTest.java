@@ -13,8 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.shuttlematch.application.ForbiddenOperationException;
 import com.shuttlematch.application.ResourceNotFoundException;
-import com.shuttlematch.application.usecase.room.CreateRoomCommand;
-import com.shuttlematch.application.usecase.room.CreateRoomUseCase;
 import com.shuttlematch.application.usecase.room.GetRoomUseCase;
 import com.shuttlematch.domain.model.room.Room;
 import com.shuttlematch.domain.model.room.RoomId;
@@ -42,9 +40,6 @@ class RoomControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private CreateRoomUseCase createSessionUseCase;
-
-    @MockitoBean
     private GetRoomUseCase getRoomUseCase;
 
     @MockitoBean
@@ -55,9 +50,6 @@ class RoomControllerTest {
 
     @MockitoBean
     private com.shuttlematch.application.usecase.room.AddParticipantUseCase addParticipantUseCase;
-
-    @MockitoBean
-    private com.shuttlematch.application.usecase.room.JoinRoomUseCase joinRoomUseCase;
 
     @MockitoBean
     private com.shuttlematch.application.usecase.room.RemoveParticipantUseCase removeParticipantUseCase;
@@ -96,36 +88,6 @@ class RoomControllerTest {
         return Room.create(
                 "練習会", OffsetDateTime.parse("2026-07-01T18:00:00+09:00"),
                 "体育館", 16, UserId.of(UUID.randomUUID()));
-    }
-
-    @Test
-    @DisplayName("POST create: 201 でセッションを返す")
-    void createReturnsCreated() throws Exception {
-        when(createSessionUseCase.execute(any(CreateRoomCommand.class))).thenReturn(sampleSession());
-
-        String body = """
-                {
-                  "title": "練習会",
-                  "heldAt": "2026-07-01T18:00:00+09:00",
-                  "location": "体育館",
-                  "capacity": 16,
-                  "createdBy": "%s"
-                }
-                """.formatted(UUID.randomUUID());
-
-        mockMvc.perform(post("/api/v1/rooms")
-                        .contentType("application/json").content(body))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.title").value("練習会"))
-                .andExpect(jsonPath("$.status").value("OPEN"));
-    }
-
-    @Test
-    @DisplayName("POST create: 必須項目欠落は 400")
-    void createValidationFails() throws Exception {
-        mockMvc.perform(post("/api/v1/rooms")
-                        .contentType("application/json").content("{\"location\":\"x\"}"))
-                .andExpect(status().isBadRequest());
     }
 
     @Test

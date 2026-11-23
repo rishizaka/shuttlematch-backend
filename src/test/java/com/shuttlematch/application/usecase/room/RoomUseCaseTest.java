@@ -28,16 +28,13 @@ import org.junit.jupiter.api.Test;
 class RoomUseCaseTest {
 
     private FakeSessionRepository roomRepository;
-    private CreateRoomUseCase createSessionUseCase;
     private AddParticipantUseCase addParticipantUseCase;
     private RemoveParticipantUseCase removeParticipantUseCase;
     private GetRoomUseCase getRoomUseCase;
-    private JoinRoomUseCase joinRoomUseCase;
 
     @BeforeEach
     void setUp() {
         roomRepository = new FakeSessionRepository();
-        createSessionUseCase = new CreateRoomUseCase(roomRepository);
         addParticipantUseCase = new AddParticipantUseCase(roomRepository);
         // このテストの2件は生成前(PREPARING/OPEN)の削除しか使わないため、
         // 試合表まわりのfakeは呼ばれない(空実装で十分)。生成後の削除の挙動は
@@ -48,53 +45,19 @@ class RoomUseCaseTest {
         removeParticipantUseCase =
                 new RemoveParticipantUseCase(roomRepository, matchScheduleRepository, replan);
         getRoomUseCase = new GetRoomUseCase(roomRepository);
-        joinRoomUseCase = new JoinRoomUseCase(roomRepository);
     }
 
-    private CreateRoomCommand createCommand() {
-        return new CreateRoomCommand(
+    /** 生成前(受付中)のルームを保存して返す。参加者の追加・削除の前提づくりに使う。 */
+    private Room newRoom() {
+        return roomRepository.save(Room.create(
                 "練習会", OffsetDateTime.now(),
-                "体育館", null, 2, UserId.of(UUID.randomUUID()));
-    }
-
-    @Test
-    @DisplayName("セッションを作成して保存する")
-    void createsSession() {
-        Room created = createSessionUseCase.execute(createCommand());
-        assertThat(roomRepository.findById(created.id())).isPresent();
-    }
-
-    @Test
-    @DisplayName("自己参加(join)で名前付きの参加者が追加され、本人IDが返る")
-    void joinAddsNamedParticipant() {
-        Room room = createSessionUseCase.execute(createCommand());
-
-        JoinRoomUseCase.Result result = joinRoomUseCase.execute(room.id(), "たろう");
-
-        assertThat(result.joinedId()).isNotNull();
-        assertThat(result.room().participants())
-                .anyMatch(p -> p.id().equals(result.joinedId()) && "たろう".equals(p.guestName()));
-    }
-
-    @Test
-    @DisplayName("名前が空の自己参加は例外")
-    void joinRequiresName() {
-        Room room = createSessionUseCase.execute(createCommand());
-        assertThatThrownBy(() -> joinRoomUseCase.execute(room.id(), "   "))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("存在しないルームへの参加は ResourceNotFound")
-    void joinRoomNotFound() {
-        assertThatThrownBy(() -> joinRoomUseCase.execute(RoomId.newId(), "たろう"))
-                .isInstanceOf(ResourceNotFoundException.class);
+                "体育館", null, 2, UserId.of(UUID.randomUUID())));
     }
 
     @Test
     @DisplayName("ゲストを参加登録できる")
     void addsGuestParticipant() {
-        Room room = createSessionUseCase.execute(createCommand());
+        Room room = newRoom();
 
         Room updated = addParticipantUseCase.execute(
                 new AddParticipantCommand(room.id(), null, "ゲストA"));
@@ -106,7 +69,7 @@ class RoomUseCaseTest {
     @Test
     @DisplayName("登録ユーザーを参加登録できる")
     void addsUserParticipant() {
-        Room room = createSessionUseCase.execute(createCommand());
+        Room room = newRoom();
         UserId user = UserId.of(UUID.randomUUID());
 
         Room updated = addParticipantUseCase.execute(
@@ -135,7 +98,7 @@ class RoomUseCaseTest {
     @Test
     @DisplayName("参加者を削除できる")
     void removesParticipant() {
-        Room room = createSessionUseCase.execute(createCommand());
+        Room room = newRoom();
         Room withGuest = addParticipantUseCase.execute(
                 new AddParticipantCommand(room.id(), null, "ゲスト"));
         Participant participant = withGuest.participants().get(0);
@@ -148,7 +111,7 @@ class RoomUseCaseTest {
     @Test
     @DisplayName("存在しない参加者の削除は ResourceNotFoundException")
     void removeMissingParticipantThrows() {
-        Room room = createSessionUseCase.execute(createCommand());
+        Room room = newRoom();
         assertThatThrownBy(() -> removeParticipantUseCase.execute(
                 room.id(), com.shuttlematch.domain.model.room.ParticipantId.newId()))
                 .isInstanceOf(ResourceNotFoundException.class);
