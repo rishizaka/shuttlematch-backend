@@ -6,8 +6,12 @@ PASS / FAIL / SKIP のレポートを出力する。稼働中の backend API を
 
 使い方:
   python3 scripts/qa_matching.py                              # localhost:8080
-  python3 scripts/qa_matching.py --base http://3.113.92.223:8080
+  python3 scripts/qa_matching.py --base http://localhost:8081 # 作業ブランチを別ポートで動かしたとき
   python3 scripts/qa_matching.py --trials 5                   # 性質ベースの試行回数
+
+ルームはかんたん作成(POST /rooms/quick)で作る。試合表は作成と同時に既定セット数
+(MatchingDomainService.DEFAULT_SET_COUNT)で生成されるので、それをそのまま検証する。
+運営操作(固定ペア・セット開始/追加・早退・再編成・削除)には作成時の運営者トークンを添える。
 
 終了コード: すべて PASS なら 0、FAIL があれば 1。
 検証で作ったルームは最後に削除する。
@@ -17,6 +21,7 @@ import json
 import math
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import Counter
 
@@ -24,11 +29,13 @@ BASE = "http://localhost:8080"
 
 
 # ---- API クライアント ----
-def req(method, path, body=None):
+def req(method, path, body=None, token=None):
+    """token を渡すと運営者トークン(X-Organizer-Token)を添える。運営操作の API はこれが無いと 403。"""
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(
-        BASE + path, data=data, method=method,
-        headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Organizer-Token"] = token
+    r = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(r, timeout=30) as resp:
             t = resp.read().decode()
@@ -42,16 +49,36 @@ def guest():
 
 
 def quick_room(n, courts):
-    """人数・コート数を指定してルーム作成(番号参加者+DEFAULT_SET_COUNT セット生成)。"""
+    """人数・コート数を指定してルーム作成(番号参加者+DEFAULT_SET_COUNT セット生成)。
+    返すルームには作成時だけ返る organizerToken が入っている。"""
     uid = guest()
-    _, room = req("POST", "/api/v1/rooms/quick",
-                  {"title": "QA", "courtCount": courts, "participantCount": n,
-                   "createdBy": uid})
+    code, room = req("POST", "/api/v1/rooms/quick",
+                     {"title": "QA", "courtCount": courts, "participantCount": n,
+                      "createdBy": uid})
+    if code != 201:
+        raise RuntimeError(f"ルームを作成できません ({code}): {room}")
     return room
 
 
-def cleanup(rid):
-    req("DELETE", f"/api/v1/rooms/{rid}")
+def op(room, method, path, body=None):
+    """運営操作。失敗したら検証を続けても意味が無いので止める。"""
+    code, res = req(method, f"/api/v1/rooms/{room['id']}{path}", body,
+                    token=room["organizerToken"])
+    if code >= 300:
+        raise RuntimeError(f"{method} {path} が失敗しました ({code}): {res}")
+    return res
+
+
+def schedule(room):
+    return req("GET", f"/api/v1/rooms/{room['id']}/matches")[1]
+
+
+def cleanup(room):
+    code, res = req("DELETE",
+                    f"/api/v1/rooms/{room['id']}?shareCode={urllib.parse.quote(room['shareCode'])}",
+                    token=room["organizerToken"])
+    if code >= 300:
+        print(f"  (警告) QA 用ルーム {room['id']} を削除できませんでした ({code}): {res}")
 
 
 # ---- スケジュール解析 ----
@@ -197,79 +224,79 @@ def merge(agg, res):
                 agg[k] = (PASS, detail)
 
 
-def scenario_static(n, courts, trials, target_sets):
+def scenario_static(n, courts, trials):
     has_rest = n > 4 * courts
     agg = {}
     for _ in range(trials):
         room = quick_room(n, courts)
-        rid = room["id"]
-        idx = index_map(room["participants"])
-        _, sched = req("POST", f"/api/v1/rooms/{rid}/matches/generate",
-                       {"matchCount": target_sets})
-        res = check_schedule(sched["matches"], idx, n, courts,
-                             has_rest=has_rest, set_count=target_sets)
-        merge(agg, res)
-        cleanup(rid)
+        try:
+            idx = index_map(room["participants"])
+            sched = schedule(room)
+            set_count = len({m["setNumber"] for m in sched["matches"]})
+            res = check_schedule(sched["matches"], idx, n, courts,
+                                 has_rest=has_rest, set_count=set_count)
+            merge(agg, res)
+        finally:
+            cleanup(room)
     return agg
 
 
-def scenario_fixed_pairs(n, courts, trials, target_sets):
-    """P9: 固定ペアが常に同一試合・同一 Pair・同時休憩。"""
+def scenario_fixed_pairs(n, courts, trials):
+    """P9: 固定ペアが常に同一試合・同一 Pair・同時休憩。
+    作成後に固定ペアを2組足し、再編成(未開始セット=全セットを組み直す)した結果で確かめる。"""
     agg = {}
     for _ in range(trials):
         room = quick_room(n, courts)
-        rid = room["id"]
-        parts = room["participants"]
-        idx = index_map(parts)
-        a, b = parts[0]["id"], parts[1]["id"]
-        c, d = parts[2]["id"], parts[3]["id"]
-        req("POST", f"/api/v1/rooms/{rid}/fixed-pairs",
-            {"participantA": a, "participantB": b})
-        req("POST", f"/api/v1/rooms/{rid}/fixed-pairs",
-            {"participantA": c, "participantB": d})
-        _, sched = req("POST", f"/api/v1/rooms/{rid}/matches/generate",
-                       {"matchCount": target_sets})
-        ms = sched["matches"]
-        ok = True
-        for pa, pb in [(a, b), (c, d)]:
-            for s in sorted({m["setNumber"] for m in ms}):
-                sm = [m for m in ms if m["setNumber"] == s]
-                # a と b は同じ試合・同じ pair、または両方休み
-                ma = next((m for m in sm if pa in players_of(m)), None)
-                mb = next((m for m in sm if pb in players_of(m)), None)
-                if ma is None and mb is None:
-                    continue  # 同時休憩 OK
-                if ma is None or mb is None or ma["matchNumber"] != mb["matchNumber"]:
-                    ok = False
-                    break
-                same_pair = ({pa, pb} == {ma["pairA"]["player1Id"], ma["pairA"]["player2Id"]}
-                             or {pa, pb} == {ma["pairB"]["player1Id"], ma["pairB"]["player2Id"]})
-                if not same_pair:
-                    ok = False
-                    break
+        try:
+            ok = check_fixed_pairs(room)
+        finally:
+            cleanup(room)
         merge(agg, {"P9": (PASS if ok else FAIL, "固定ペアは常に同一チーム・同時出入り")})
-        cleanup(rid)
     return agg
+
+
+def check_fixed_pairs(room):
+    parts = room["participants"]
+    a, b = parts[0]["id"], parts[1]["id"]
+    c, d = parts[2]["id"], parts[3]["id"]
+    op(room, "POST", "/fixed-pairs", {"participantA": a, "participantB": b})
+    op(room, "POST", "/fixed-pairs", {"participantA": c, "participantB": d})
+    sched = op(room, "POST", "/matches/replan")
+    ms = sched["matches"]
+    ok = True
+    for pa, pb in [(a, b), (c, d)]:
+        for s in sorted({m["setNumber"] for m in ms}):
+            sm = [m for m in ms if m["setNumber"] == s]
+            # a と b は同じ試合・同じ pair、または両方休み
+            ma = next((m for m in sm if pa in players_of(m)), None)
+            mb = next((m for m in sm if pb in players_of(m)), None)
+            if ma is None and mb is None:
+                continue  # 同時休憩 OK
+            if ma is None or mb is None or ma["matchNumber"] != mb["matchNumber"]:
+                ok = False
+                break
+            same_pair = ({pa, pb} == {ma["pairA"]["player1Id"], ma["pairA"]["player2Id"]}
+                         or {pa, pb} == {ma["pairB"]["player1Id"], ma["pairB"]["player2Id"]})
+            if not same_pair:
+                ok = False
+                break
+    return ok
 
 
 def scenario_addsets(n, courts, trials):
-    """P10: generate(10)+addSets(6) が generate(16) と同水準。"""
+    """P10: 作成時の一括生成(既定セット数)に addSets(6) を足しても、一括生成と同水準。
+    (以前は generate(10)+addSets(6) と generate(16) を比べていたが、単独の生成 API を
+    廃止したので、同じルームの「足す前」を一括生成の基準にする)"""
     has_rest = n > 4 * courts
     agg = {}
     for _ in range(trials):
-        # baseline: 一括16
         room = quick_room(n, courts)
-        rid = room["id"]
-        idx = index_map(room["participants"])
-        _, sa = req("POST", f"/api/v1/rooms/{rid}/matches/generate", {"matchCount": 16})
-        base_streak = max_streak(sa["matches"], idx, n)
-        cleanup(rid)
-        # incremental: 10 + addSets 6
-        room = quick_room(n, courts)
-        rid = room["id"]
-        idx = index_map(room["participants"])
-        req("POST", f"/api/v1/rooms/{rid}/matches/generate", {"matchCount": 10})
-        _, sb = req("POST", f"/api/v1/rooms/{rid}/matches/sets", {"setCount": 6})
+        try:
+            idx = index_map(room["participants"])
+            base_streak = max_streak(schedule(room)["matches"], idx, n)
+            sb = op(room, "POST", "/matches/sets", {"setCount": 6})
+        finally:
+            cleanup(room)
         inc_streak = max_streak(sb["matches"], idx, n)
         inc_restdiff = rest_diff(sb["matches"], idx, n)
         # 連続休み(境界含む)
@@ -280,7 +307,6 @@ def scenario_addsets(n, courts, trials):
             r = set(range(1, n + 1)) - set(pbs[s])
             consec += len(r & prev)
             prev = r
-        cleanup(rid)
         ok = (inc_restdiff <= 1 and (not has_rest or consec == 0)
               and inc_streak <= base_streak + 1)
         merge(agg, {"P10": (PASS if ok else FAIL,
@@ -290,22 +316,28 @@ def scenario_addsets(n, courts, trials):
 
 def scenario_replan(n, courts):
     """P11/P12: 開始済み保持・早退者除外。"""
-    agg = {}
     room = quick_room(n, courts)
-    rid = room["id"]
+    try:
+        return check_replan(room)
+    finally:
+        cleanup(room)
+
+
+def check_replan(room):
+    agg = {}
     parts = room["participants"]
     idx = index_map(parts)
-    _, before = req("GET", f"/api/v1/rooms/{rid}/matches")
+    before = schedule(room)
     set1_before = sorted(
         (m["courtNumber"], sorted(idx[x] for x in players_of(m)))
         for m in before["matches"] if m["setNumber"] == 1)
     # 第1セットを開始
-    req("POST", f"/api/v1/rooms/{rid}/matches/sets/1/start")
+    op(room, "POST", "/matches/sets/1/start")
     # 早退者を1人(第2セット以降に出る想定の番号)設定 → replan
     leaver = parts[-1]["id"]
     leaver_num = idx[leaver]
-    req("POST", f"/api/v1/rooms/{rid}/participants/{leaver}/leave")
-    _, after = req("POST", f"/api/v1/rooms/{rid}/matches/replan")
+    op(room, "POST", f"/participants/{leaver}/leave")
+    after = op(room, "POST", "/matches/replan")
     set1_after = sorted(
         (m["courtNumber"], sorted(idx[x] for x in players_of(m)))
         for m in after["matches"] if m["setNumber"] == 1)
@@ -319,7 +351,6 @@ def scenario_replan(n, courts):
         "P11": (res11, "開始済み第1セットが不変"),
         "P12": (res12, f"早退者{leaver_num}番が未開始セットに不在"),
     })
-    cleanup(rid)
     return agg
 
 
@@ -359,12 +390,12 @@ def main():
         (6, 1, "6人1コート(毎セット2人休み)"),
         (8, 2, "8人2コート(休みゼロ=構造上の限界確認)"),
     ]:
-        agg = scenario_static(n, courts, args.trials, target_sets=15)
+        agg = scenario_static(n, courts, args.trials)
         blocks.append((f"静的検証 {label}", agg))
 
     # P9 固定ペア
     blocks.append(("固定ペア P9 (10人2コート・2組固定)",
-                   scenario_fixed_pairs(10, 2, args.trials, target_sets=15)))
+                   scenario_fixed_pairs(10, 2, args.trials)))
     # P10 セット追加の引き継ぎ
     blocks.append(("セット追加の引き継ぎ P10 (10人2コート)",
                    scenario_addsets(10, 2, args.trials)))
